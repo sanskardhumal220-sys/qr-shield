@@ -181,34 +181,83 @@ const handlePredict = async (req, res) => {
       return res.json(flaskRes.data);
     } catch {
       // Inline Random Forest Classifier Engine for Vercel Serverless
-      const urlStr = url.trim();
-      const urlLower = urlStr.toLowerCase();
-      
-      let hostname = urlLower;
-      try {
-        hostname = new URL(urlLower.startsWith('http') ? urlLower : 'https://' + urlLower).hostname;
-      } catch {}
-
-      const url_length = urlStr.length;
-      const has_https = urlLower.startsWith('https://') ? 1 : 0;
-      const num_dots = (urlStr.match(/\./g) || []).length;
-      const has_ip = (/(\d{1,3}\.){3}\d{1,3}/.test(hostname) || /0x[0-9a-f]+/i.test(hostname)) ? 1 : 0;
-      const has_login_keyword = /(login|verify|account|banking|secure|update|auth|credential|signin|password|confirm|wallet)/.test(urlLower) ? 1 : 0;
-      const is_shortened = /(bit\.ly|tinyurl\.com|t\.co|goo\.gl|is\.gd|buff\.ly|ow\.ly|rebrand\.ly|shorturl\.at|cutt\.ly)/.test(hostname) ? 1 : 0;
-
-      const safeWhitelist = ['google.com', 'wikipedia.org', 'github.com', 'microsoft.com', 'apple.com', 'amazon.com', 'stackoverflow.com', 'cloudflare.com', 'w3schools.com', 'youtube.com', 'linkedin.com', 'twitter.com', 'facebook.com', 'nytimes.com', 'bbc.com', 'mit.edu', 'stanford.edu', 'harvard.edu', 'nih.gov', 'usa.gov'];
-      const highRiskTlds = ['.top', '.xyz', '.buzz', '.club', '.work', '.kim', '.info', '.online', '.site', '.vip', '.monster', '.zip', '.mov'];
-      const safeTlds = ['.gov', '.edu', '.org', '.mil', '.int'];
-
-      const is_whitelisted = (safeWhitelist.some(wd => hostname.endsWith(wd)) || safeTlds.some(stld => hostname.endswith ? hostname.endswith(stld) : hostname.endsWith(stld))) ? 1 : 0;
-
-      let tld_risk_score = 1;
-      if (safeTlds.some(stld => hostname.endsWith(stld))) {
-        tld_risk_score = 0;
-      } else if (highRiskTlds.some(rtld => hostname.endsWith(rtld))) {
-        tld_risk_score = 2;
+      function calculateShannonEntropy(str) {
+        if (!str) return 0;
+        const len = str.length;
+        const counts = {};
+        for (let i = 0; i < len; i++) {
+          const ch = str[i];
+          counts[ch] = (counts[ch] || 0) + 1;
+        }
+        let entropy = 0;
+        for (const count of Object.values(counts)) {
+          const p = count / len;
+          entropy -= p * Math.log2(p);
+        }
+        return parseFloat(entropy.toFixed(4));
       }
 
+      function extractFeatures(urlStr) {
+        const lower = urlStr.toLowerCase().trim();
+        let hostname = lower;
+        try {
+          const parsed = new URL(lower.includes('://') ? lower : 'https://' + lower);
+          hostname = parsed.hostname || lower;
+        } catch {}
+
+        const url_length = urlStr.length;
+        const num_dots = (urlStr.match(/\./g) || []).length;
+        const has_https = lower.startsWith('https://') ? 1 : 0;
+        const has_ip = (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(hostname) || /0x[0-9a-f]+/i.test(hostname)) ? 1 : 0;
+
+        const domainParts = hostname.split('.');
+        const num_subdomains = domainParts.length >= 2 ? Math.max(0, domainParts.length - 2) : 0;
+
+        const has_at_symbol = urlStr.includes('@') ? 1 : 0;
+        const has_hyphen_in_domain = hostname.includes('-') ? 1 : 0;
+
+        const loginKeywords = ['login', 'verify', 'account', 'banking', 'secure', 'update', 'auth', 'credential', 'signin', 'password', 'confirm', 'wallet', 'service', 'support'];
+        const has_login_keyword = loginKeywords.some(kw => lower.includes(kw)) ? 1 : 0;
+
+        const url_entropy = calculateShannonEntropy(urlStr);
+
+        const shortenerDomains = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly', 'ow.ly', 'rebrand.ly', 'shorturl.at', 'cutt.ly'];
+        const is_shortened = shortenerDomains.some(sd => hostname.includes(sd)) ? 1 : 0;
+
+        const safeDomains = [
+          'google.com', 'wikipedia.org', 'github.com', 'microsoft.com', 'apple.com',
+          'amazon.com', 'stackoverflow.com', 'cloudflare.com', 'w3schools.com', 'youtube.com',
+          'linkedin.com', 'twitter.com', 'facebook.com', 'nytimes.com', 'bbc.com', 'httpbin.org'
+        ];
+        const is_whitelisted = (safeDomains.some(sd => hostname.endsWith(sd)) || hostname.endsWith('.gov') || hostname.endsWith('.edu') || hostname.endsWith('.org')) ? 1 : 0;
+
+        const highRiskTlds = ['.top', '.xyz', '.buzz', '.club', '.work', '.kim', '.info', '.online', '.site', '.vip', '.monster', '.zip', '.mov'];
+        const safeTlds = ['.gov', '.edu', '.org', '.mil', '.int'];
+
+        let tld_risk_score = 1;
+        if (safeTlds.some(st => hostname.endsWith(st))) tld_risk_score = 0;
+        else if (highRiskTlds.some(rt => hostname.endsWith(rt))) tld_risk_score = 2;
+
+        const domain_length = hostname.length;
+
+        return {
+          url_length,
+          num_dots,
+          has_https,
+          has_ip,
+          num_subdomains,
+          has_at_symbol,
+          has_hyphen_in_domain,
+          has_login_keyword,
+          url_entropy,
+          tld_risk_score,
+          domain_length,
+          is_shortened,
+          is_whitelisted
+        };
+      }
+
+      const features = extractFeatures(url);
       let riskScore = 0;
       if (is_whitelisted) {
         riskScore = 0; // Trusted Domain Whitelist

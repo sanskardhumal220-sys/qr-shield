@@ -570,14 +570,19 @@ document.addEventListener('DOMContentLoaded', () => {
       mlCompareVal.className = `ml-stat-val ${match ? 'val-agree' : 'val-malicious'}`;
 
       mlFeatTags.innerHTML = `
-        <span class="feat-tag">Length: ${feats.url_length || content.length}</span>
-        <span class="feat-tag">HTTPS: ${feats.has_https ? '1 (Secure)' : '0 (Insecure)'}</span>
+        <span class="feat-tag">Len: ${feats.url_length || content.length}</span>
         <span class="feat-tag">Dots: ${feats.num_dots ?? 1}</span>
+        <span class="feat-tag">HTTPS: ${feats.has_https ? '1' : '0'}</span>
         <span class="feat-tag">IP Host: ${feats.has_ip ? '1' : '0'}</span>
+        <span class="feat-tag">Subdomains: ${feats.num_subdomains ?? 0}</span>
+        <span class="feat-tag">@ Sym: ${feats.has_at_symbol ? '1' : '0'}</span>
+        <span class="feat-tag">Hyphen: ${feats.has_hyphen_in_domain ? '1' : '0'}</span>
         <span class="feat-tag">Keyword: ${feats.has_login_keyword ? '1' : '0'}</span>
+        <span class="feat-tag">Entropy: ${feats.url_entropy ?? 3.5}</span>
+        <span class="feat-tag">TLD Risk: ${feats.tld_risk_score ?? 1}</span>
+        <span class="feat-tag">Dom Len: ${feats.domain_length ?? 10}</span>
         <span class="feat-tag">Shortened: ${feats.is_shortened ? '1' : '0'}</span>
         <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1' : '0'}</span>
-        <span class="feat-tag">TLD Risk: ${feats.tld_risk_score ?? 1}</span>
       `;
     })
     .catch(() => {});

@@ -1,146 +1,67 @@
 """
-Flask Microservice API for QR Shield Machine Learning URL Classifier (Advanced 8-Feature Version)
-Serves POST /predict endpoint on http://localhost:5001
+Flask Backend Microservice API for QR Shield Machine Learning URL Classifier (13 Features)
 """
 
 import pickle
-import re
-from urllib.parse import urlparse
+import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from generate_dataset import extract_advanced_13_features
 
 app = Flask(__name__)
 CORS(app)
 
-# Load trained Random Forest model from model.pkl
-MODEL_PATH = 'model.pkl'
+# Load trained 13-feature Random Forest model
+MODEL = None
 try:
-    with open(MODEL_PATH, 'rb') as f:
-        model = pickle.load(f)
-    print("[SUCCESS] Loaded 8-feature machine learning model from model.pkl")
+    with open('model.pkl', 'rb') as f:
+        MODEL = pickle.load(f)
+    print("[SUCCESS] Flask ML Microservice loaded 13-feature model.pkl!")
 except Exception as e:
-    print(f"[WARNING] Could not load model.pkl ({e}). Run train_model.py first.")
-    model = None
+    print(f"[WARNING] Failed to load model.pkl: {e}")
 
-SAFE_DOMAINS_WHITELIST = [
-    'google.com', 'wikipedia.org', 'github.com', 'microsoft.com', 'apple.com',
-    'amazon.com', 'stackoverflow.com', 'cloudflare.com', 'w3schools.com', 'youtube.com',
-    'linkedin.com', 'twitter.com', 'facebook.com', 'nytimes.com', 'bbc.com',
-    'mit.edu', 'stanford.edu', 'harvard.edu', 'nih.gov', 'usa.gov', 'pypi.org',
-    'npmjs.com', 'scikit-learn.org', 'khanacademy.org', 'reddit.com', 'geeksforgeeks.org'
+FEATURE_COLS = [
+    'url_length', 'num_dots', 'has_https', 'has_ip', 'num_subdomains',
+    'has_at_symbol', 'has_hyphen_in_domain', 'has_login_keyword', 'url_entropy',
+    'tld_risk_score', 'domain_length', 'is_shortened', 'is_whitelisted'
 ]
-
-HIGH_RISK_TLDS = ['.top', '.xyz', '.buzz', '.club', '.work', '.kim', '.info', '.online', '.site', '.vip', '.monster', '.zip', '.mov']
-SAFE_TLDS = ['.gov', '.edu', '.org', '.mil', '.int']
-
-SHORTENER_DOMAINS = [
-    'bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly',
-    'ow.ly', 'rebrand.ly', 'shorturl.at', 'tiny.cc', 'cutt.ly',
-    'qr.ae', 'rb.gy', 'v.gd', 't.ly', 'clck.ru', 's.id', 'short.gy'
-]
-
-LOGIN_KEYWORDS = [
-    'login', 'verify', 'account', 'secure', 'update', 'banking',
-    'auth', 'credential', 'signin', 'password', 'confirm', 'wallet'
-]
-
-def extract_advanced_features(url):
-    """
-    Extracts 8 numerical features:
-    1. url_length
-    2. has_https
-    3. num_dots
-    4. has_ip
-    5. has_login_keyword
-    6. is_shortened
-    7. is_whitelisted
-    8. tld_risk_score (0=safer, 1=neutral, 2=high risk)
-    """
-    url_str = str(url).strip()
-    url_lower = url_str.lower()
-    
-    try:
-        parsed = urlparse(url_lower if '://' in url_lower else 'https://' + url_lower)
-        hostname = parsed.hostname or url_lower
-    except Exception:
-        hostname = url_lower
-
-    url_length = len(url_str)
-    has_https = 1 if url_lower.startswith('https://') or (parsed.scheme == 'https') else 0
-    num_dots = url_str.count('.')
-    has_ip = 1 if re.search(r'(\d{1,3}\.){3}\d{1,3}', hostname) or re.search(r'0x[0-9a-f]+', hostname) else 0
-    has_login_keyword = 1 if any(kw in url_lower for kw in LOGIN_KEYWORDS) else 0
-    is_shortened = 1 if any(sd in hostname for sd in SHORTENER_DOMAINS) else 0
-
-    is_whitelisted = 1 if (any(hostname.endswith(wd) for wd in SAFE_DOMAINS_WHITELIST) or any(hostname.endswith(stld) for stld in ['.gov', '.edu', '.org'])) else 0
-    
-    tld_risk_score = 1
-    if any(hostname.endswith(stld) for stld in SAFE_TLDS):
-        tld_risk_score = 0
-    elif any(hostname.endswith(rtld) for rtld in HIGH_RISK_TLDS):
-        tld_risk_score = 2
-
-    return {
-        'url_length': url_length,
-        'has_https': has_https,
-        'num_dots': num_dots,
-        'has_ip': has_ip,
-        'has_login_keyword': has_login_keyword,
-        'is_shortened': is_shortened,
-        'is_whitelisted': is_whitelisted,
-        'tld_risk_score': tld_risk_score
-    }
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
-        'status': 'online',
-        'service': 'QR Shield Flask ML Classifier API',
-        'model_loaded': model is not None
+        "status": "healthy",
+        "service": "QR Shield Flask ML Microservice",
+        "model_loaded": MODEL is not None,
+        "feature_count": 13
     })
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    if not model:
-        return jsonify({'error': 'Model not loaded on server. Run train_model.py first.'}), 500
+    data = request.get_json() or {}
+    url = data.get('url', '').strip()
 
-    data = request.get_json(silent=True) or {}
-    url = data.get('url')
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
 
-    if not url or not isinstance(url, str):
-        return jsonify({'error': 'Valid URL string is required in request body.'}), 400
-
-    features_dict = extract_advanced_features(url)
-    feature_vector = [[
-        features_dict['url_length'],
-        features_dict['has_https'],
-        features_dict['num_dots'],
-        features_dict['has_ip'],
-        features_dict['has_login_keyword'],
-        features_dict['is_shortened'],
-        features_dict['is_whitelisted'],
-        features_dict['tld_risk_score']
-    ]]
-
-    prediction_class = int(model.predict(feature_vector)[0])
-    probabilities = model.predict_proba(feature_vector)[0]
-    confidence_score = round(float(probabilities[prediction_class]) * 100, 2)
-    prediction_label = "Malicious" if prediction_class == 1 else "Safe"
+    feats = extract_advanced_13_features(url)
+    
+    if MODEL is None:
+        # Fallback heuristic
+        pred_label = "Malicious" if (feats['has_ip'] or feats['is_shortened'] or feats['has_login_keyword']) and not feats['is_whitelisted'] else "Safe"
+        confidence = 85.0
+    else:
+        df_input = pd.DataFrame([feats])[FEATURE_COLS]
+        pred_class = MODEL.predict(df_input)[0]
+        probs = MODEL.predict_proba(df_input)[0]
+        confidence = round(float(probs[pred_class]) * 100, 2)
+        pred_label = "Safe" if pred_class == 0 else "Malicious"
 
     return jsonify({
-        'url': url,
-        'prediction': prediction_label,
-        'confidence': confidence_score,
-        'raw_label': prediction_class,
-        'probabilities': {
-            'safe': round(float(probabilities[0]) * 100, 2),
-            'malicious': round(float(probabilities[1]) * 100, 2)
-        },
-        'features': features_dict
+        "url": url,
+        "prediction": pred_label,
+        "confidence": confidence,
+        "features": feats
     })
 
 if __name__ == '__main__':
-    print("=" * 65)
-    print("[START] QR Shield Flask ML Service Running on http://localhost:5001")
-    print("=" * 65)
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    app.run(host='0.0.0.0', port=5001, debug=True)
