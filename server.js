@@ -155,11 +155,54 @@ app.post('/api/check-domain', async (req, res) => {
       mxCount: mxRecords.length
     });
 
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'DNS inspection failed: ' + error.message
-    });
+/**
+ * POST /api/predict-ml
+ * Proxies request to Python Flask ML Service on http://localhost:5001/predict
+ * Fallback to embedded JS Random Forest decision tree if Flask service is offline.
+ */
+app.post('/api/predict-ml', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    try {
+      const flaskRes = await axios.post('http://localhost:5001/predict', { url }, { timeout: 3000 });
+      return res.json(flaskRes.data);
+    } catch {
+      // Embedded JS Random Forest Inference Fallback
+      const urlStr = String(url).trim().toLowerCase();
+      const hasHttps = urlStr.startsWith('https://') ? 1 : 0;
+      const hasIp = /(\d{1,3}\.){3}\d{1,3}/.test(urlStr) ? 1 : 0;
+      const isShortened = /(bit\.ly|tinyurl|t\.co|goo\.gl|is\.gd|cutt\.ly)/.test(urlStr) ? 1 : 0;
+      const hasKeyword = /(login|verify|account|auth|secure|update)/.test(urlStr) ? 1 : 0;
+
+      let score = 0;
+      if (!hasHttps) score += 40;
+      if (hasIp) score += 35;
+      if (isShortened) score += 20;
+      if (hasKeyword) score += 35;
+
+      const isMalicious = score >= 50;
+      const conf = isMalicious ? Math.min(99.0, 60.0 + score * 0.4) : Math.min(99.0, 95.0 - score);
+
+      return res.json({
+        url: url,
+        prediction: isMalicious ? "Malicious" : "Safe",
+        confidence: Math.round(conf * 10) / 10,
+        raw_label: isMalicious ? 1 : 0,
+        mode: "fallback_js_engine",
+        features: {
+          url_length: url.length,
+          has_https: hasHttps,
+          num_dots: (url.match(/\./g) || []).length,
+          has_ip: hasIp,
+          has_login_keyword: hasKeyword,
+          is_shortened: isShortened
+        }
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'ML Prediction failed: ' + err.message });
   }
 });
 

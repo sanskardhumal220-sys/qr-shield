@@ -302,6 +302,60 @@
           </div>
         </section>
 
+        <!-- Machine Learning URL Classifier Card -->
+        <section class="card ml-card" id="mlCard">
+          <div class="card-header">
+            <div class="ml-header-group">
+              <h2 class="card-title">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+                Random Forest ML Model
+              </h2>
+              <div class="ml-toggle-wrapper">
+                <label class="switch">
+                  <input type="checkbox" id="mlModeToggle" checked>
+                  <span class="slider round"></span>
+                </label>
+                <span class="ml-toggle-label" id="mlToggleStatusLabel">AI Mode (ML Model Active)</span>
+              </div>
+            </div>
+            <span class="subtitle">Scikit-Learn Random Forest Classifier (1,000+ Trained Samples)</span>
+          </div>
+
+          <div class="ml-body" id="mlBody">
+            <div class="ml-metrics-row">
+              <div class="ml-stat-chip">
+                <span class="ml-stat-label">ML Prediction</span>
+                <span class="ml-stat-val val-safe" id="mlPredVal">SAFE</span>
+              </div>
+              <div class="ml-stat-chip">
+                <span class="ml-stat-label">Model Confidence</span>
+                <span class="ml-stat-val" id="mlConfVal">100%</span>
+              </div>
+              <div class="ml-stat-chip">
+                <span class="ml-stat-label">Rule vs ML Match</span>
+                <span class="ml-stat-val val-agree" id="mlCompareVal">✅ 100% Agreement</span>
+              </div>
+            </div>
+
+            <!-- Extracted Feature Vector Pills -->
+            <div class="ml-features-group">
+              <span class="ml-feat-title">EXTRACTED ML FEATURE VECTOR:</span>
+              <div class="ml-feat-tags" id="mlFeatTags">
+                <span class="feat-tag">Length: 37</span>
+                <span class="feat-tag">HTTPS: 1</span>
+                <span class="feat-tag">Dots: 1</span>
+                <span class="feat-tag">IP Host: 0</span>
+                <span class="feat-tag">Login Keyword: 0</span>
+                <span class="feat-tag">Shortened: 0</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- AI Security Analysis Section -->
         <section class="card ai-card placeholder-state" id="aiCard">
           <div class="card-header">
