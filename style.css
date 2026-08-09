@@ -874,6 +874,100 @@ body {
   border-left: 4px solid var(--accent-cyan);
 }
 
+/* --- Hybrid Decision Engine Card --- */
+.hybrid-card {
+  border-left: 4px solid var(--accent-purple);
+}
+
+.hybrid-header-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.hybrid-badge {
+  font-size: 0.8rem;
+  font-weight: 900;
+  padding: 0.2rem 0.75rem;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.05em;
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--color-safe);
+  border: 1px solid var(--color-safe);
+}
+
+.hybrid-badge.safe { background: rgba(16, 185, 129, 0.2); color: var(--color-safe); border-color: var(--color-safe); }
+.hybrid-badge.suspicious { background: rgba(245, 158, 11, 0.2); color: var(--color-suspicious); border-color: var(--color-suspicious); }
+.hybrid-badge.dangerous { background: rgba(239, 68, 68, 0.2); color: var(--color-dangerous); border-color: var(--color-dangerous); }
+
+.hybrid-reason-box {
+  background: rgba(10, 15, 29, 0.6);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.reason-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--accent-purple);
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.reason-text {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.reason-case {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(0, 242, 254, 0.08);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+
+.hybrid-tags-wrapper {
+  margin-top: 0.85rem;
+}
+
+.hybrid-tags-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.hybrid-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.hybrid-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+}
+
+.tag-trust { background: rgba(16, 185, 129, 0.15); color: var(--color-safe); border-color: rgba(16, 185, 129, 0.3); }
+.tag-rule { background: rgba(245, 158, 11, 0.15); color: var(--color-suspicious); border-color: rgba(245, 158, 11, 0.3); }
+.tag-ml { background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border-color: rgba(0, 242, 254, 0.3); }
+.tag-consensus { background: rgba(157, 78, 221, 0.15); color: var(--accent-purple); border-color: rgba(157, 78, 221, 0.3); }
+
 .ml-header-group {
   display: flex;
   align-items: center;

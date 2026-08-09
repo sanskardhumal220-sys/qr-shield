@@ -259,41 +259,28 @@ const handlePredict = async (req, res) => {
 
       const features = extractFeatures(url);
       let riskScore = 0;
-      if (is_whitelisted) {
+      if (features.is_whitelisted) {
         riskScore = 0; // Trusted Domain Whitelist
       } else {
-        if (has_ip) riskScore += 45;
-        if (has_login_keyword) riskScore += 35;
-        if (is_shortened) riskScore += 25;
-        if (tld_risk_score === 2) riskScore += 30;
-        if (!has_https && has_login_keyword) riskScore += 25; // HTTP only penalised if paired with phishing keywords!
-        if (url_length > 70) riskScore += 15;
-        if (num_dots > 3) riskScore += 15;
-        if (tld_risk_score === 0) riskScore -= 20; // Reduce risk for .gov / .edu / .org
+        if (features.has_ip) riskScore += 45;
+        if (features.has_login_keyword) riskScore += 35;
+        if (features.is_shortened) riskScore += 25;
+        if (features.tld_risk_score === 2) riskScore += 30;
+        if (!features.has_https) riskScore += 10; // HTTP alone is only +10 risk
+        if (features.url_length > 70) riskScore += 15;
+        if (features.num_dots > 3) riskScore += 15;
+        if (features.tld_risk_score === 0) riskScore -= 20; // Reduce risk for .gov / .edu / .org
       }
 
       const isMalicious = riskScore >= 45;
-      const confidence = is_whitelisted ? 100.0 : (isMalicious ? Math.min(99.0, 75.0 + (riskScore * 0.3)) : Math.min(99.5, 99.0 - (riskScore * 0.4)));
+      const confidence = features.is_whitelisted ? 98.5 : (isMalicious ? Math.min(99.0, 75.0 + (riskScore * 0.3)) : Math.min(99.5, 99.0 - (riskScore * 0.4)));
 
       return res.json({
         url: url,
         prediction: isMalicious ? "Malicious" : "Safe",
-        confidence: Math.round(confidence * 10) / 10,
+        confidence: parseFloat(confidence.toFixed(2)),
         raw_label: isMalicious ? 1 : 0,
-        probabilities: {
-          safe: isMalicious ? Math.round((100 - confidence) * 10) / 10 : Math.round(confidence * 10) / 10,
-          malicious: isMalicious ? Math.round(confidence * 10) / 10 : Math.round((100 - confidence) * 10) / 10
-        },
-        features: {
-          url_length,
-          has_https,
-          num_dots,
-          has_ip,
-          has_login_keyword,
-          is_shortened,
-          is_whitelisted,
-          tld_risk_score
-        }
+        features: features
       });
     }
   } catch (err) {

@@ -360,8 +360,8 @@ document.addEventListener('DOMContentLoaded', () => {
         sslStatus = 'HTTPS (Encrypted)';
       } else if (urlObj.protocol === 'http:') {
         sslStatus = 'HTTP (Unencrypted)';
-        riskScore += 45;
-        vectors.push({ type: 'danger', title: 'Insecure HTTP Protocol', desc: 'Communicates without TLS encryption, exposing login data to interception.' });
+        riskScore += 10; // Assign small risk (+10) for unencrypted HTTP alone to avoid false positives
+        vectors.push({ type: 'warning', title: 'Unencrypted HTTP Protocol', desc: 'Communicates over plain HTTP without SSL encryption.' });
       }
 
       // Shortener check
@@ -541,6 +541,67 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // --- Intelligent Hybrid Decision Engine (Fusion Logic) ---
+  function evaluateHybridDecision(ruleRiskScore, mlPred, mlConf, isWhitelisted) {
+    const isMlSafe = mlPred === "Safe";
+    const isMlMalicious = mlPred === "Malicious";
+
+    let finalVerdict = "SAFE";
+    let decisionCase = "";
+    let decisionReason = "";
+
+    // CASE 1: IF ML = SAFE AND confidence > 80% AND domain is trusted -> SAFE
+    if (isMlSafe && mlConf >= 80 && isWhitelisted) {
+      finalVerdict = "SAFE";
+      decisionCase = "CASE 1: Trusted Domain & High ML Confidence";
+      decisionReason = "Whitelisted organization domain verified with high Machine Learning confidence score (>= 80%).";
+    }
+    // CASE 2: IF ML = SAFE AND Rule Risk < 50 -> SAFE
+    else if (isMlSafe && ruleRiskScore < 50) {
+      finalVerdict = "SAFE";
+      decisionCase = "CASE 2: Clean ML & Low Rule Risk";
+      decisionReason = "Machine Learning classifier predicts Safe and rule-based threat score is under 50.";
+    }
+    // CASE 3: IF ML = SAFE AND Rule Risk >= 50 -> SUSPICIOUS
+    else if (isMlSafe && ruleRiskScore >= 50) {
+      finalVerdict = "SUSPICIOUS";
+      decisionCase = "CASE 3: ML Safe vs Elevated Rule Risk Conflict";
+      decisionReason = "ML model predicts Safe, but rule engine detected elevated risk factors (>= 50). Resolving to Suspicious for zero-trust protection.";
+    }
+    // CASE 4: IF ML = MALICIOUS AND confidence > 70% -> DANGEROUS
+    else if (isMlMalicious && mlConf >= 70) {
+      finalVerdict = "DANGEROUS";
+      decisionCase = "CASE 4: High Confidence ML Threat Detection";
+      decisionReason = "Machine Learning classifier detected malicious quishing patterns with high confidence (>= 70%).";
+    }
+    // CASE 5: IF Rule Risk > 70 AND ML confidence < 60% -> DANGEROUS
+    else if (ruleRiskScore > 70 && mlConf < 60) {
+      finalVerdict = "DANGEROUS";
+      decisionCase = "CASE 5: High Rule Risk Overrides Uncertain ML Score";
+      decisionReason = "Critical rule-based threat vectors triggered (risk score > 70) overriding low ML confidence (< 60%).";
+    }
+    // CASE 6: IF ML and Rule both agree -> that result
+    else {
+      const ruleIsSafe = ruleRiskScore < 25;
+      finalVerdict = (isMlSafe && ruleIsSafe) ? "SAFE" : "DANGEROUS";
+      decisionCase = "CASE 6: Complete Engine Consensus";
+      decisionReason = "Complete consensus achieved between Rule Engine heuristic analysis and Random Forest ML classifier.";
+    }
+
+    // Build Decision Metric Tags
+    const tags = [];
+    if (isWhitelisted) tags.push({ text: "✔ Trusted Domain", type: "tag-trust" });
+    if (ruleRiskScore >= 20) tags.push({ text: "⚠ Rule Triggered", type: "tag-rule" });
+    if (mlConf >= 80) tags.push({ text: "🤖 ML Confidence High", type: "tag-ml" });
+
+    const ruleIsSafe = ruleRiskScore < 25;
+    if ((isMlSafe && ruleIsSafe) || (isMlMalicious && ruleRiskScore >= 60)) {
+      tags.push({ text: "🤝 Consensus Reached", type: "tag-consensus" });
+    }
+
+    return { finalVerdict, decisionCase, decisionReason, tags };
+  }
+
   // --- ML Classifier Integration ---
   function updateMLClassifierCard(content, ruleAnalysis) {
     if (!mlCard || !ruleAnalysis.isUrl) {
@@ -584,6 +645,24 @@ document.addEventListener('DOMContentLoaded', () => {
         <span class="feat-tag">Shortened: ${feats.is_shortened ? '1' : '0'}</span>
         <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1' : '0'}</span>
       `;
+
+      // Render Hybrid AI Decision Engine Fusion Layer
+      const hybrid = evaluateHybridDecision(ruleAnalysis.riskScore, pred, conf, feats.is_whitelisted === 1);
+      
+      const hybridVerdictBadge = document.getElementById('hybridVerdictBadge');
+      const hybridReasonText = document.getElementById('hybridReasonText');
+      const hybridCaseText = document.getElementById('hybridCaseText');
+      const hybridTagsList = document.getElementById('hybridTagsList');
+
+      if (hybridVerdictBadge) {
+        hybridVerdictBadge.textContent = hybrid.finalVerdict;
+        hybridVerdictBadge.className = `hybrid-badge ${hybrid.finalVerdict.toLowerCase()}`;
+      }
+      if (hybridReasonText) hybridReasonText.textContent = hybrid.decisionReason;
+      if (hybridCaseText) hybridCaseText.textContent = hybrid.decisionCase;
+      if (hybridTagsList) {
+        hybridTagsList.innerHTML = hybrid.tags.map(t => `<span class="hybrid-tag ${t.type}">${escapeHtml(t.text)}</span>`).join('');
+      }
     })
     .catch(() => {});
   }
