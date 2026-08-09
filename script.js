@@ -391,63 +391,77 @@ document.addEventListener('DOMContentLoaded', () => {
     const isMlMalicious = mlPred === "Malicious";
 
     let finalVerdict = "SAFE";
-    let decisionCase = "";
-    let decisionReason = "";
 
-    // 1. CONFIDENCE THRESHOLDS & 3. HYBRID DECISION FIX
-    if (isMlSafe) {
-        finalVerdict = "SAFE";
-        decisionCase = "CASE: ML Safe Prediction";
-        decisionReason = "ML model predicts Safe. No malicious patterns detected.";
+    // 1. CONFIDENCE RULE (STRICT)
+    if (mlConf < 60) {
+        finalVerdict = "SUSPICIOUS";
+    } else if (mlConf >= 60 && mlConf <= 85) {
+        finalVerdict = isMlMalicious ? "MEDIUM RISK" : "SAFE";
     } else {
-        if (mlConf < 60) {
-            finalVerdict = "SUSPICIOUS";
-            decisionCase = "CASE: Low Confidence ML Threat";
-            decisionReason = `Low ML confidence (${mlConf}%). Requires further manual verification.`;
-        } else if (mlConf >= 60 && mlConf <= 85) {
-            finalVerdict = "MEDIUM RISK";
-            decisionCase = "CASE: Medium Confidence ML Threat";
-            decisionReason = `ML model predicts Malicious with medium confidence (${mlConf}%).`;
-        } else {
-            if (ruleRiskScore >= 50) {
-                finalVerdict = "DANGEROUS";
-                decisionCase = "CASE: High Confidence ML Threat & Rule Engine Consensus";
-                decisionReason = `Machine Learning classifier detected malicious quishing patterns with high confidence (${mlConf}%).`;
-            } else {
-                finalVerdict = "SUSPICIOUS";
-                decisionCase = "CASE: ML High Confidence vs Low Rule Risk Conflict";
-                decisionReason = `ML detected threat (${mlConf}%), but rule score is low. Marked as Suspicious.`;
-            }
-        }
+        finalVerdict = isMlMalicious ? "DANGEROUS" : "SAFE";
+    }
+
+    // Determine Discrepancy
+    const ruleIsHighRisk = ruleRiskScore >= 40;
+    let engineAgreement = "Consensus";
+    if (isMlMalicious && !ruleIsHighRisk) engineAgreement = "Discrepancy";
+    if (isMlSafe && ruleIsHighRisk) engineAgreement = "Discrepancy";
+
+    // 2. DISCREPANCY RULE (CRITICAL)
+    if (engineAgreement === "Discrepancy") {
+        if (finalVerdict === "DANGEROUS") finalVerdict = "MEDIUM RISK";
+        else if (finalVerdict === "MEDIUM RISK") finalVerdict = "SUSPICIOUS";
+        else if (finalVerdict === "SAFE") finalVerdict = "SUSPICIOUS";
     }
 
     // 4. DOMAIN TRUST CHECK
     if (isWhitelisted && finalVerdict !== "SAFE") {
-        if (finalVerdict === "DANGEROUS") {
-           finalVerdict = "MEDIUM RISK";
-           decisionReason += " However, the domain is trusted, so risk is reduced.";
-        } else {
-           finalVerdict = "SAFE";
-           decisionReason += " The domain is highly trusted, overriding risk.";
-        }
+        if (finalVerdict === "DANGEROUS") finalVerdict = "MEDIUM RISK";
+        else finalVerdict = "SAFE";
     }
 
-    // 6. EXPLAINABLE OUTPUT (Decision Metric Tags)
+    // 5. UI FIX & EXPLAINABLE OUTPUT (Dynamic Reason)
+    let decisionReasonArr = [];
+    if (ruleResult.shortenerStatus.includes("Shortened")) {
+        decisionReasonArr.push("Shortened URL — destination unknown");
+    }
+    if (mlConf < 60) {
+        decisionReasonArr.push(`Low ML confidence (${mlConf}%) — requires caution`);
+    } else {
+        decisionReasonArr.push(`${mlPred} ML prediction (${mlConf}%)`);
+    }
+    if (engineAgreement === "Discrepancy") {
+        decisionReasonArr.push("Engine disagreement (Rule vs ML)");
+    }
+    if (isWhitelisted) {
+        decisionReasonArr.push("Trusted domain verified");
+    }
+
+    let decisionReason = decisionReasonArr.join(" | ");
+    let decisionCase = `MULTI-FACTOR: ${engineAgreement}`;
+
+    // Tags
     const tags = [];
     if (isWhitelisted) {
        tags.push({ text: "✔ Trusted Domain", type: "tag-trust" });
     } else {
-       tags.push({ text: "❓ Destination unknown → requires verification", type: "tag-rule" });
+       tags.push({ text: "❓ Unverified Domain", type: "tag-rule" });
+    }
+    
+    if (engineAgreement === "Discrepancy") {
+       tags.push({ text: "⚖ Engine Disagreement", type: "tag-rule" });
+    } else {
+       tags.push({ text: "🤝 Consensus", type: "tag-consensus" });
     }
     
     if (ruleResult.shortenerStatus.includes("Shortened")) {
-        tags.push({ text: "⚠ Shortened URL detected", type: "tag-rule" });
+        tags.push({ text: "⚠ Shortened URL", type: "tag-rule" });
     }
 
     if (mlConf < 60) {
-        tags.push({ text: `Low ML confidence (${mlConf}%)`, type: "tag-ml" });
+        tags.push({ text: `Low Confidence (${mlConf}%)`, type: "tag-ml" });
     } else {
-        tags.push({ text: `🤖 ML Confidence (${mlConf}%)`, type: "tag-ml" });
+        tags.push({ text: `ML Confidence (${mlConf}%)`, type: "tag-ml" });
     }
 
     return { finalVerdict, decisionCase, decisionReason, tags };
@@ -570,8 +584,8 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (riskScore >= 25) riskLevel = 'Suspicious';
 
     // REMOVE OVERCONFIDENCE
-    if (riskScore < 5) {
-        riskScore = 5;
+    if (riskScore < 15) {
+        riskScore = 15;
     }
 
     return {
@@ -666,11 +680,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fallback static narrative
     const displayLevel = (finalDecision ? finalDecision.finalVerdict : analysis.riskLevel).toUpperCase();
     if (displayLevel === 'SAFE') {
-      aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
-    } else if (displayLevel === 'SUSPICIOUS') {
-      aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
+      aiNarrative.textContent = '🟢 ' + (finalDecision ? finalDecision.decisionReason : 'Payload analysis confirms zero high-risk indicators.');
+    } else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'MEDIUM RISK') {
+      aiNarrative.textContent = '🟡 ' + (finalDecision ? finalDecision.decisionReason : 'Caution Advised: Suspicious redirect shorteners or low confidence vectors detected.');
     } else {
-      aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';
+      aiNarrative.textContent = '🚨 ' + (finalDecision ? finalDecision.decisionReason : 'Critical Risk Alert: High-confidence quishing threat detected!');
     }
   }
 
