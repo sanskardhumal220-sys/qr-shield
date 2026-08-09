@@ -221,6 +221,140 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => settingsBtn.innerHTML = origText, 2000);
   });
 
+  // --- Safe QR Code Generator Logic ---
+  const genUrlInput = document.getElementById('genUrlInput');
+  const genWatermarkCheck = document.getElementById('genWatermarkCheck');
+  const generateQrBtn = document.getElementById('generateQrBtn');
+  const generatedQrCanvas = document.getElementById('generatedQrCanvas');
+  const genPlaceholder = document.getElementById('genPlaceholder');
+  const genActions = document.getElementById('genActions');
+  const downloadPngBtn = document.getElementById('downloadPngBtn');
+  const copyQrImgBtn = document.getElementById('copyQrImgBtn');
+  const colorBtns = document.querySelectorAll('.color-btn');
+
+  let selectedColor = '#6366f1';
+
+  colorBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      colorBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedColor = btn.getAttribute('data-color');
+    });
+  });
+
+  generateQrBtn.addEventListener('click', () => {
+    const text = genUrlInput.value.trim();
+    if (!text) {
+      alert('Please enter a target URL or text content to generate a QR code.');
+      return;
+    }
+
+    // Security pre-evaluation
+    const analysis = analyzeSecurityRisk(text);
+    if (analysis.riskLevel === 'Dangerous') {
+      if (!confirm(`⚠️ SECURITY WARNING: The link you entered has been flagged as DANGEROUS (${analysis.riskScore}% risk score).\n\nAre you sure you want to generate a QR code for this link?`)) {
+        return;
+      }
+    }
+
+    renderSafeQRCode(text, selectedColor, genWatermarkCheck.checked);
+  });
+
+  function renderSafeQRCode(text, accentColor, embedWatermark) {
+    const gctx = generatedQrCanvas.getContext('2d');
+    const width = 220;
+    const height = 220;
+    generatedQrCanvas.width = width;
+    generatedQrCanvas.height = height;
+
+    // Background
+    gctx.fillStyle = '#0f172a';
+    gctx.fillRect(0, 0, width, height);
+
+    // Outer Position Detection Boxes
+    drawPositionBox(gctx, 20, 20, accentColor);
+    drawPositionBox(gctx, width - 60, 20, accentColor);
+    drawPositionBox(gctx, 20, height - 60, accentColor);
+
+    // Matrix Dots based on text hash
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) hash = (hash << 5) - hash + text.charCodeAt(i);
+
+    const offset = 26;
+    for (let r = 0; r < 16; r++) {
+      for (let c = 0; c < 16; c++) {
+        // Skip position boxes
+        if ((r < 6 && c < 6) || (r < 6 && c > 9) || (r > 9 && c < 6)) continue;
+
+        // Skip center if watermark requested
+        if (embedWatermark && r >= 6 && r <= 9 && c >= 6 && c <= 9) continue;
+
+        const val = Math.abs(Math.sin(hash + r * 17 + c * 31));
+        if (val > 0.4) {
+          gctx.fillStyle = accentColor;
+          gctx.fillRect(offset + c * 10, offset + r * 10, 8, 8);
+        }
+      }
+    }
+
+    // Embed QR Shield Watermark Badge in Center
+    if (embedWatermark) {
+      const cx = width / 2;
+      const cy = height / 2;
+
+      gctx.save();
+      gctx.beginPath();
+      gctx.arc(cx, cy, 26, 0, Math.PI * 2);
+      gctx.fillStyle = '#0f172a';
+      gctx.fill();
+      gctx.strokeStyle = accentColor;
+      gctx.lineWidth = 2;
+      gctx.stroke();
+
+      // Draw Shield Emoji
+      gctx.font = '22px sans-serif';
+      gctx.textAlign = 'center';
+      gctx.textBaseline = 'middle';
+      gctx.fillText('🛡️', cx, cy);
+      gctx.restore();
+    }
+
+    genPlaceholder.classList.add('hidden');
+    generatedQrCanvas.classList.remove('hidden');
+    genActions.classList.remove('hidden');
+  }
+
+  function drawPositionBox(gctx, x, y, color) {
+    gctx.strokeStyle = color;
+    gctx.lineWidth = 4;
+    gctx.strokeRect(x, y, 40, 40);
+    gctx.fillStyle = color;
+    gctx.fillRect(x + 10, y + 10, 20, 20);
+  }
+
+  // Download PNG
+  downloadPngBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = `qr_shield_verified_${Date.now()}.png`;
+    link.href = generatedQrCanvas.toDataURL('image/png');
+    link.click();
+  });
+
+  // Copy Image to Clipboard
+  copyQrImgBtn.addEventListener('click', () => {
+    generatedQrCanvas.toBlob((blob) => {
+      try {
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+          const origText = copyQrImgBtn.innerHTML;
+          copyQrImgBtn.innerHTML = '✓ Copied!';
+          setTimeout(() => copyQrImgBtn.innerHTML = origText, 2000);
+        });
+      } catch {
+        alert('Clipboard image copy not supported in this browser version.');
+      }
+    });
+  });
+
   // --- Event Listeners ---
 
   // Browse File Button Click

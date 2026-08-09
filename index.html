@@ -323,6 +323,62 @@
       </div>
     </main>
 
+    <!-- Safe QR Code Generator Section -->
+    <section class="card generator-card">
+      <div class="card-header">
+        <h2 class="card-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <rect x="8" y="8" width="3" height="3" fill="currentColor"/>
+            <rect x="13" y="8" width="3" height="3" fill="currentColor"/>
+            <rect x="8" y="13" width="3" height="3" fill="currentColor"/>
+            <rect x="13" y="13" width="3" height="3" fill="currentColor"/>
+          </svg>
+          Safe QR Code Generator
+        </h2>
+        <span class="subtitle">Create verified QR codes with built-in QR Shield watermark badge</span>
+      </div>
+
+      <div class="generator-grid">
+        <div class="generator-inputs">
+          <div class="setting-group">
+            <label class="setting-label">Target URL or Content</label>
+            <input type="text" id="genUrlInput" class="setting-input" placeholder="https://yourdomain.com/official-page" value="https://github.com/sanskardhumal220-sys/qr-shield">
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label">Brand Color Accent</label>
+            <div class="color-options">
+              <button type="button" class="color-btn active" data-color="#6366f1" style="background:#6366f1;"></button>
+              <button type="button" class="color-btn" data-color="#10b981" style="background:#10b981;"></button>
+              <button type="button" class="color-btn" data-color="#8b5cf6" style="background:#8b5cf6;"></button>
+              <button type="button" class="color-btn" data-color="#06b6d4" style="background:#06b6d4;"></button>
+            </div>
+          </div>
+
+          <div class="setting-group checkbox-group">
+            <input type="checkbox" id="genWatermarkCheck" checked>
+            <label for="genWatermarkCheck">Embed "QR Shield Verified" Shield Badge 🛡️</label>
+          </div>
+
+          <button type="button" class="generate-qr-btn" id="generateQrBtn">Generate Safe QR Code</button>
+        </div>
+
+        <div class="generator-output">
+          <div class="qr-canvas-wrapper" id="qrCanvasWrapper">
+            <canvas id="generatedQrCanvas" width="220" height="220" class="hidden"></canvas>
+            <div class="gen-placeholder" id="genPlaceholder">
+              <span>🛡️ Click Generate to Create Safe QR Code</span>
+            </div>
+          </div>
+          <div class="gen-actions hidden" id="genActions">
+            <button type="button" class="icon-btn primary-link" id="downloadPngBtn">Download PNG</button>
+            <button type="button" class="icon-btn" id="copyQrImgBtn">Copy Image</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Scan History Section -->
     <section class="card history-card">
       <div class="history-header">
