@@ -420,6 +420,12 @@ document.addEventListener('DOMContentLoaded', () => {
         else finalVerdict = "SAFE";
     }
 
+    // 5. GOOGLE SAFE BROWSING INTEGRATION
+    const gsbStatus = mlResult.gsb_status;
+    if (gsbStatus === "Flagged") {
+        finalVerdict = "DANGEROUS";
+    }
+
     // 5. UI FIX & EXPLAINABLE OUTPUT (Dynamic Reason)
     let decisionReasonArr = [];
     if (ruleResult.shortenerStatus.includes("Shortened")) {
@@ -435,6 +441,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (isWhitelisted) {
         decisionReasonArr.push("Trusted domain verified");
+    }
+
+    if (gsbStatus === "Flagged") {
+        decisionReasonArr.push("Google Safe Browsing: FLAGGED as malicious");
     }
 
     let decisionReason = decisionReasonArr.join(" | ");
@@ -462,6 +472,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tags.push({ text: `Low Confidence (${mlConf}%)`, type: "tag-ml" });
     } else {
         tags.push({ text: `ML Confidence (${mlConf}%)`, type: "tag-ml" });
+    }
+    
+    if (gsbStatus === "Flagged") {
+        tags.push({ text: "🛑 GSB Flagged", type: "tag-rule" });
     }
 
     return { finalVerdict, decisionCase, decisionReason, tags };
