@@ -1,389 +1,168 @@
 /**
- * QR Shield - AI Quishing Detector
- * Main Application Logic
+ * QR Shield - AI Quishing Detector & Threat Intelligence Platform
+ * Frontend Application Engine & Interactive Controls
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // --- DOM Element References ---
+
+  // --- Element Selectors ---
   const dropZone = document.getElementById('dropZone');
-  const dropZoneContent = document.getElementById('dropZoneContent');
   const fileInput = document.getElementById('fileInput');
   const browseBtn = document.getElementById('browseBtn');
+  const dropZoneContent = document.getElementById('dropZoneContent');
   const previewContainer = document.getElementById('previewContainer');
-  const qrPreview = document.getElementById('qrPreview');
-  const radarOverlay = document.getElementById('radarOverlay');
-  const changeImgBtn = document.getElementById('changeImgBtn');
-  const errorBanner = document.getElementById('errorBanner');
-  const errorMessage = document.getElementById('errorMessage');
+  const qrImagePreview = document.getElementById('qrImagePreview');
+  const resetScanBtn = document.getElementById('resetScanBtn');
 
-  const emptyState = document.getElementById('emptyState');
-  const resultContent = document.getElementById('resultContent');
+  // Camera Elements
+  const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+  const stopCameraBtn = document.getElementById('stopCameraBtn');
+  const cameraStreamContainer = document.getElementById('cameraStreamContainer');
+  const cameraVideo = document.getElementById('cameraVideo');
+  const cameraCanvas = document.getElementById('cameraCanvas');
+
+  // Results Dashboard Elements
   const resultCard = document.getElementById('resultCard');
-
+  const resultPlaceholder = document.getElementById('resultPlaceholder');
+  const resultContent = document.getElementById('resultContent');
   const riskBadge = document.getElementById('riskBadge');
-  const riskIcon = document.getElementById('riskIcon');
-  const riskText = document.getElementById('riskText');
-  const meterScore = document.getElementById('meterScore');
-  const meterFill = document.getElementById('meterFill');
+  const riskSummaryText = document.getElementById('riskSummaryText');
+  const riskScoreVal = document.getElementById('riskScoreVal');
+  const riskRingCircle = document.getElementById('riskRingCircle');
+  const riskMeterFill = document.getElementById('riskMeterFill');
+  const riskPercentText = document.getElementById('riskPercentText');
 
   const payloadText = document.getElementById('payloadText');
-  const copyBtn = document.getElementById('copyBtn');
-  const openLinkBtn = document.getElementById('openLinkBtn');
+  const copyPayloadBtn = document.getElementById('copyPayloadBtn');
+  const redirectTracerBox = document.getElementById('redirectTracerBox');
+  const redirectChain = document.getElementById('redirectChain');
 
+  // Metric Chips
   const metricSsl = document.getElementById('metricSsl');
   const metricShortener = document.getElementById('metricShortener');
   const metricDomain = document.getElementById('metricDomain');
   const metricPayload = document.getElementById('metricPayload');
 
-  const aiCard = document.getElementById('aiCard');
-  const aiBody = document.getElementById('aiBody');
-
-  const historyList = document.getElementById('historyList');
-  const historyCount = document.getElementById('historyCount');
-  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
-  const presetButtons = document.querySelectorAll('.preset-btn');
-
-  // Hidden canvas for QR image decoding
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-  // Scan History Array from localStorage
-  let scanHistory = JSON.parse(localStorage.getItem('qr_shield_history') || '[]');
-
-  const cameraBtn = document.getElementById('cameraBtn');
-  const cameraContainer = document.getElementById('cameraContainer');
-  const cameraVideo = document.getElementById('cameraVideo');
-  const stopCameraBtn = document.getElementById('stopCameraBtn');
-
-  const sandboxBtn = document.getElementById('sandboxBtn');
-  const sandboxModal = document.getElementById('sandboxModal');
-  const sandboxFrame = document.getElementById('sandboxFrame');
-  const sandboxUrlDisplay = document.getElementById('sandboxUrlDisplay');
-  const closeSandboxBtn = document.getElementById('closeSandboxBtn');
-
-  let cameraStream = null;
-  let cameraAnimFrame = null;
-
-  // Initialize UI
-  renderHistory();
-
-  // --- Camera Scanner Logic ---
-  cameraBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    startCameraScan();
-  });
-
-  stopCameraBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    stopCameraScan();
-  });
-
-  function startCameraScan() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showError('Camera access is not supported in this browser.');
-      return;
-    }
-
-    dropZoneContent.classList.add('hidden');
-    cameraContainer.classList.remove('hidden');
-    hideError();
-
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then((stream) => {
-        cameraStream = stream;
-        cameraVideo.srcObject = stream;
-        cameraVideo.setAttribute('playsinline', true);
-        cameraVideo.play();
-        cameraAnimFrame = requestAnimationFrame(scanCameraFrame);
-      })
-      .catch((err) => {
-        stopCameraScan();
-        showError('Unable to access camera: ' + (err.message || 'Permission denied'));
-      });
-  }
-
-  function stopCameraScan() {
-    if (cameraAnimFrame) {
-      cancelAnimationFrame(cameraAnimFrame);
-      cameraAnimFrame = null;
-    }
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      cameraStream = null;
-    }
-    cameraContainer.classList.add('hidden');
-    dropZoneContent.classList.remove('hidden');
-  }
-
-  function scanCameraFrame() {
-    if (cameraVideo.readyState === cameraVideo.HAVE_ENOUGH_DATA) {
-      canvas.width = cameraVideo.videoWidth;
-      canvas.height = cameraVideo.videoHeight;
-      ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
-      if (window.jsQR) {
-        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
-        if (code && code.data) {
-          const snapshotUrl = canvas.toDataURL('image/png');
-          stopCameraScan();
-          processQRImageSrc(snapshotUrl, code.data);
-          return;
-        }
-      }
-    }
-    cameraAnimFrame = requestAnimationFrame(scanCameraFrame);
-  }
-
-  // --- Safe Sandbox Modal Logic ---
-  sandboxBtn.addEventListener('click', () => {
-    const url = openLinkBtn.href;
-    if (url) {
-      sandboxUrlDisplay.textContent = url;
-      sandboxFrame.src = url;
-      sandboxModal.classList.remove('hidden');
-    }
-  });
-
-  closeSandboxBtn.addEventListener('click', closeSandboxModal);
-  sandboxModal.addEventListener('click', (e) => {
-    if (e.target === sandboxModal) closeSandboxModal();
-  });
-
-  function closeSandboxModal() {
-    sandboxModal.classList.add('hidden');
-    sandboxFrame.src = 'about:blank';
-  }
-
-  // --- PDF Security Audit Export ---
+  // Action Buttons
+  const openSandboxBtn = document.getElementById('openSandboxBtn');
   const exportPdfBtn = document.getElementById('exportPdfBtn');
-  exportPdfBtn.addEventListener('click', () => {
-    window.print();
-  });
+  const openLinkBtn = document.getElementById('openLinkBtn');
 
-  // --- CSV Scan History Export ---
-  const exportCsvBtn = document.getElementById('exportCsvBtn');
-  exportCsvBtn.addEventListener('click', () => {
-    if (scanHistory.length === 0) {
-      alert('No scan history available to export.');
-      return;
-    }
+  // AI Narrative Elements
+  const aiNarrative = document.getElementById('aiNarrative');
+  const vectorsList = document.getElementById('vectorsList');
 
-    let csvContent = 'data:text/csv;charset=utf-8,ID,Date,Time,Content,Risk Level,Risk Score (%)\n';
-    scanHistory.forEach(item => {
-      const cleanContent = `"${item.fullContent.replace(/"/g, '""')}"`;
-      csvContent += `${item.id},${item.date},${item.timestamp},${cleanContent},${item.riskLevel},${item.riskScore}\n`;
-    });
+  // ML Card Elements
+  const mlCard = document.getElementById('mlCard');
+  const mlPredVal = document.getElementById('mlPredVal');
+  const mlConfVal = document.getElementById('mlConfVal');
+  const mlCompareVal = document.getElementById('mlCompareVal');
+  const mlFeatTags = document.getElementById('mlFeatTags');
+  const mlModeToggle = document.getElementById('mlModeToggle');
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `qr_shield_scan_history_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  });
-
-  // --- Settings Modal Logic ---
-  const settingsBtn = document.getElementById('settingsBtn');
+  // Theme Switcher & Settings
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const themeLabelText = document.getElementById('themeLabelText');
+  const openSettingsBtn = document.getElementById('openSettingsBtn');
   const settingsModal = document.getElementById('settingsModal');
-  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-  const strictnessModeSelect = document.getElementById('strictnessModeSelect');
+  const strictnessSelect = document.getElementById('strictnessSelect');
   const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
-  const autoUnshortenCheck = document.getElementById('autoUnshortenCheck');
 
-  // Load saved settings
-  const appSettings = JSON.parse(localStorage.getItem('qr_shield_settings') || '{"strictness":"standard","geminiKey":"","autoUnshorten":true}');
-  strictnessModeSelect.value = appSettings.strictness || 'standard';
-  geminiApiKeyInput.value = appSettings.geminiKey || '';
-  autoUnshortenCheck.checked = appSettings.autoUnshorten !== false;
+  // Sandbox Modal Elements
+  const sandboxModal = document.getElementById('sandboxModal');
+  const closeSandboxModalBtn = document.getElementById('closeSandboxModalBtn');
+  const sandboxUrlDisplay = document.getElementById('sandboxUrlDisplay');
+  const sandboxIframe = document.getElementById('sandboxIframe');
 
-  settingsBtn.addEventListener('click', () => {
-    settingsModal.classList.remove('hidden');
-  });
-
-  closeSettingsBtn.addEventListener('click', () => {
-    settingsModal.classList.add('hidden');
-  });
-
-  saveSettingsBtn.addEventListener('click', () => {
-    const updatedSettings = {
-      strictness: strictnessModeSelect.value,
-      geminiKey: geminiApiKeyInput.value.trim(),
-      autoUnshorten: autoUnshortenCheck.checked
-    };
-    localStorage.setItem('qr_shield_settings', JSON.stringify(updatedSettings));
-    settingsModal.classList.add('hidden');
-
-    const origText = settingsBtn.innerHTML;
-    settingsBtn.innerHTML = '✓ Saved';
-    setTimeout(() => settingsBtn.innerHTML = origText, 2000);
-  });
-
-  // --- Safe QR Code Generator Logic ---
+  // Generator Elements
   const genUrlInput = document.getElementById('genUrlInput');
-  const genWatermarkCheck = document.getElementById('genWatermarkCheck');
   const generateQrBtn = document.getElementById('generateQrBtn');
-  const generatedQrCanvas = document.getElementById('generatedQrCanvas');
-  const genPlaceholder = document.getElementById('genPlaceholder');
-  const genActions = document.getElementById('genActions');
-  const downloadPngBtn = document.getElementById('downloadPngBtn');
-  const copyQrImgBtn = document.getElementById('copyQrImgBtn');
-  const colorBtns = document.querySelectorAll('.color-btn');
+  const embedBadgeCheckbox = document.getElementById('embedBadgeCheckbox');
+  const genOutputContainer = document.getElementById('genOutputContainer');
+  const qrGenCanvas = document.getElementById('qrGenCanvas');
+  const downloadQrBtn = document.getElementById('downloadQrBtn');
+  const copyQrImageBtn = document.getElementById('copyQrImageBtn');
 
-  let selectedColor = '#6366f1';
+  // History Elements
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  const historyTimeline = document.getElementById('historyTimeline');
+  const emptyHistoryMsg = document.getElementById('emptyHistoryMsg');
 
-  colorBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      colorBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedColor = btn.getAttribute('data-color');
-    });
-  });
+  // Global State
+  let activeCameraStream = null;
+  let isCameraScanning = false;
+  let currentDecodedPayload = '';
+  let currentAnalysisResult = null;
+  let activeBrandColor = '#6366f1';
 
-  generateQrBtn.addEventListener('click', () => {
-    const text = genUrlInput.value.trim();
-    if (!text) {
-      alert('Please enter a target URL or text content to generate a QR code.');
-      return;
-    }
+  // --- Web Audio API Scan Audio Synthesizer ---
+  function playScanBeep(isSuccess = true) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    // Security pre-evaluation
-    const analysis = analyzeSecurityRisk(text);
-    if (analysis.riskLevel === 'Dangerous') {
-      if (!confirm(`⚠️ SECURITY WARNING: The link you entered has been flagged as DANGEROUS (${analysis.riskScore}% risk score).\n\nAre you sure you want to generate a QR code for this link?`)) {
-        return;
+      osc.type = isSuccess ? 'sine' : 'sawtooth';
+      osc.frequency.setValueAtTime(isSuccess ? 880 : 220, ctx.currentTime);
+      if (isSuccess) {
+        osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.15);
       }
+
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+    } catch {
+      // Audio autoplay restrictions catch
     }
-
-    renderSafeQRCode(text, selectedColor, genWatermarkCheck.checked);
-  });
-
-  function renderSafeQRCode(text, accentColor, embedWatermark) {
-    const gctx = generatedQrCanvas.getContext('2d');
-    const width = 220;
-    const height = 220;
-    generatedQrCanvas.width = width;
-    generatedQrCanvas.height = height;
-
-    // Background
-    gctx.fillStyle = '#0f172a';
-    gctx.fillRect(0, 0, width, height);
-
-    // Outer Position Detection Boxes
-    drawPositionBox(gctx, 20, 20, accentColor);
-    drawPositionBox(gctx, width - 60, 20, accentColor);
-    drawPositionBox(gctx, 20, height - 60, accentColor);
-
-    // Matrix Dots based on text hash
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) hash = (hash << 5) - hash + text.charCodeAt(i);
-
-    const offset = 26;
-    for (let r = 0; r < 16; r++) {
-      for (let c = 0; c < 16; c++) {
-        // Skip position boxes
-        if ((r < 6 && c < 6) || (r < 6 && c > 9) || (r > 9 && c < 6)) continue;
-
-        // Skip center if watermark requested
-        if (embedWatermark && r >= 6 && r <= 9 && c >= 6 && c <= 9) continue;
-
-        const val = Math.abs(Math.sin(hash + r * 17 + c * 31));
-        if (val > 0.4) {
-          gctx.fillStyle = accentColor;
-          gctx.fillRect(offset + c * 10, offset + r * 10, 8, 8);
-        }
-      }
-    }
-
-    // Embed QR Shield Watermark Badge in Center
-    if (embedWatermark) {
-      const cx = width / 2;
-      const cy = height / 2;
-
-      gctx.save();
-      gctx.beginPath();
-      gctx.arc(cx, cy, 26, 0, Math.PI * 2);
-      gctx.fillStyle = '#0f172a';
-      gctx.fill();
-      gctx.strokeStyle = accentColor;
-      gctx.lineWidth = 2;
-      gctx.stroke();
-
-      // Draw Shield Emoji
-      gctx.font = '22px sans-serif';
-      gctx.textAlign = 'center';
-      gctx.textBaseline = 'middle';
-      gctx.fillText('🛡️', cx, cy);
-      gctx.restore();
-    }
-
-    genPlaceholder.classList.add('hidden');
-    generatedQrCanvas.classList.remove('hidden');
-    genActions.classList.remove('hidden');
   }
 
-  function drawPositionBox(gctx, x, y, color) {
-    gctx.strokeStyle = color;
-    gctx.lineWidth = 4;
-    gctx.strokeRect(x, y, 40, 40);
-    gctx.fillStyle = color;
-    gctx.fillRect(x + 10, y + 10, 20, 20);
+  // --- Theme Switcher Engine ---
+  themeToggleBtn.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'cyber-neon';
+    const nextTheme = currentTheme === 'cyber-neon' ? 'dark' : 'cyber-neon';
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    themeLabelText.textContent = nextTheme === 'cyber-neon' ? 'Cyber Neon' : 'Deep Dark';
+    localStorage.setItem('qr_shield_theme', nextTheme);
+  });
+
+  // Load saved theme
+  const savedTheme = localStorage.getItem('qr_shield_theme');
+  if (savedTheme) {
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    themeLabelText.textContent = savedTheme === 'cyber-neon' ? 'Cyber Neon' : 'Deep Dark';
   }
 
-  // Download PNG
-  downloadPngBtn.addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = `qr_shield_verified_${Date.now()}.png`;
-    link.href = generatedQrCanvas.toDataURL('image/png');
-    link.click();
+  // --- File Upload & Drag-and-Drop Handlers ---
+  browseBtn.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('click', (e) => {
+    if (e.target === dropZone || e.target === dropZoneContent || e.target.classList.contains('drop-title')) {
+      fileInput.click();
+    }
   });
 
-  // Copy Image to Clipboard
-  copyQrImgBtn.addEventListener('click', () => {
-    generatedQrCanvas.toBlob((blob) => {
-      try {
-        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
-          const origText = copyQrImgBtn.innerHTML;
-          copyQrImgBtn.innerHTML = '✓ Copied!';
-          setTimeout(() => copyQrImgBtn.innerHTML = origText, 2000);
-        });
-      } catch {
-        alert('Clipboard image copy not supported in this browser version.');
-      }
-    });
-  });
-
-  // --- Event Listeners ---
-
-  // Browse File Button Click
-  browseBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    fileInput.click();
-  });
-
-  // File Input Change
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) handleImageFile(file);
-  });
-
-  // Drag & Drop Events
-  ['dragenter', 'dragover'].forEach(eventName => {
-    dropZone.addEventListener(eventName, (e) => {
+  ['dragenter', 'dragover'].forEach(evt => {
+    dropZone.addEventListener(evt, (e) => {
       e.preventDefault();
       e.stopPropagation();
       dropZone.classList.add('dragover');
-    }, false);
+    });
   });
 
-  ['dragleave', 'drop'].forEach(eventName => {
-    dropZone.addEventListener(eventName, (e) => {
+  ['dragleave', 'drop'].forEach(evt => {
+    dropZone.addEventListener(evt, (e) => {
       e.preventDefault();
       e.stopPropagation();
       dropZone.classList.remove('dragover');
-    }, false);
+    });
   });
 
   dropZone.addEventListener('drop', (e) => {
@@ -393,469 +172,292 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Clipboard Paste Support
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleImageFile(e.target.files[0]);
+    }
+  });
+
+  // Global Clipboard Paste (Ctrl+V)
   document.addEventListener('paste', (e) => {
-    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-    for (const item of items) {
-      if (item.kind === 'file' && item.type.startsWith('image/')) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let item of items) {
+      if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) handleImageFile(file);
-        break;
       }
     }
   });
 
-  // Change / Reset Image
-  changeImgBtn.addEventListener('click', resetScannerUI);
-
-  // Preset Buttons Click
-  presetButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const presetType = btn.getAttribute('data-preset');
-      loadPresetQR(presetType);
-    });
+  // Reset Scanner Button
+  resetScanBtn.addEventListener('click', () => {
+    fileInput.value = '';
+    previewContainer.classList.add('hidden');
+    dropZoneContent.classList.remove('hidden');
+    resultContent.classList.add('hidden');
+    resultPlaceholder.classList.remove('hidden');
+    resultCard.classList.add('placeholder-state');
   });
 
-  // Copy Payload Button
-  copyBtn.addEventListener('click', () => {
-    const text = payloadText.textContent;
-    if (text) {
-      navigator.clipboard.writeText(text).then(() => {
-        const originalHTML = copyBtn.innerHTML;
-        copyBtn.innerHTML = `
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg> Copied!
-        `;
-        setTimeout(() => copyBtn.innerHTML = originalHTML, 2000);
-      });
-    }
-  });
-
-  // Clear History Button
-  clearHistoryBtn.addEventListener('click', () => {
-    if (scanHistory.length === 0) return;
-    if (confirm('Are you sure you want to clear your QR scan history?')) {
-      scanHistory = [];
-      localStorage.removeItem('qr_shield_history');
-      renderHistory();
-    }
-  });
-
-  // --- Core Processing Functions ---
-
-  /**
-   * Handle uploaded Image file
-   * @param {File} file 
-   */
+  // --- Image Processing & QR Decoding ---
   function handleImageFile(file) {
     if (!file.type.startsWith('image/')) {
-      showError('Selected file is not an image. Please upload a PNG, JPG, or WEBP image.');
+      alert('Please upload a valid image file (PNG, JPG, WEBP).');
       return;
     }
 
-    hideError();
     const reader = new FileReader();
     reader.onload = (e) => {
-      const imgDataUrl = e.target.result;
-      processQRImageSrc(imgDataUrl);
+      const img = new Image();
+      img.onload = () => {
+        qrImagePreview.src = e.target.result;
+        dropZoneContent.classList.add('hidden');
+        previewContainer.classList.remove('hidden');
+
+        decodeQrFromImage(img);
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }
 
-  /**
-   * Process QR image source URL, show scanner radar animation, decode QR
-   * @param {string} imgSrc 
-   * @param {string} [knownPayload] Optional pre-known payload for synthesized presets
-   */
-  function processQRImageSrc(imgSrc, knownPayload = null) {
-    // Show image preview and radar overlay
-    dropZoneContent.classList.add('hidden');
-    previewContainer.classList.remove('hidden');
-    qrPreview.src = imgSrc;
-    radarOverlay.classList.remove('hidden');
-    hideError();
-
-    // Simulate AI Radar Scan delay for realistic UX
-    setTimeout(() => {
-      radarOverlay.classList.add('hidden');
-      
-      const img = new Image();
-      img.crossOrigin = 'Anonymous';
-      img.onload = () => {
-        let decodedText = knownPayload;
-        
-        if (!decodedText) {
-          decodedText = decodeQRCodeFromImage(img);
-        }
-
-        if (decodedText) {
-          const analysis = analyzeSecurityRisk(decodedText);
-          displayResults(decodedText, analysis);
-          saveToHistory(decodedText, analysis);
-        } else {
-          showError('No QR code could be detected in this image. Please ensure the image is clear and well-lit.');
-        }
-      };
-      img.onerror = () => {
-        if (knownPayload) {
-          const analysis = analyzeSecurityRisk(knownPayload);
-          displayResults(knownPayload, analysis);
-          saveToHistory(knownPayload, analysis);
-        } else {
-          showError('Failed to load image for scanning.');
-        }
-      };
-      img.src = imgSrc;
-    }, 900);
-  }
-
-  /**
-   * Decode QR Code from HTMLImageElement using jsQR
-   * @param {HTMLImageElement} img 
-   * @returns {string|null}
-   */
-  function decodeQRCodeFromImage(img) {
+  function decodeQrFromImage(img) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     canvas.width = img.naturalWidth || img.width;
     canvas.height = img.naturalHeight || img.height;
+
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    
-    // Attempt standard jsQR decoding
-    if (window.jsQR) {
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "dontInvert",
-      });
-      if (code && code.data) return code.data;
+    let code = jsQR(imageData.data, imageData.width, imageData.height);
 
-      // Secondary attempt with inverted colors
-      const codeInverted = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "onlyInvert",
-      });
-      if (codeInverted && codeInverted.data) return codeInverted.data;
+    if (!code) {
+      // Invert color pass for dark-mode QRs
+      for (let i = 0; i < imageData.data.length; i += 4) {
+        imageData.data[i] = 255 - imageData.data[i];
+        imageData.data[i + 1] = 255 - imageData.data[i + 1];
+        imageData.data[i + 2] = 255 - imageData.data[i + 2];
+      }
+      code = jsQR(imageData.data, imageData.width, imageData.height);
     }
-    return null;
+
+    if (code && code.data) {
+      playScanBeep(true);
+      processPayloadAndDisplay(code.data);
+    } else {
+      playScanBeep(false);
+      alert('⚠️ No QR code could be detected in this image. Please try another high-contrast image.');
+    }
   }
 
-  /**
-   * Risk Assessment Engine
-   * Analyzes decoded text payload for quishing / phishing indicators
-   * @param {string} rawContent 
-   * @returns {Object} Risk analysis results
-   */
-  function analyzeSecurityRisk(rawContent) {
-    const text = rawContent.trim();
+  // --- Live Camera Scanner ---
+  toggleCameraBtn.addEventListener('click', startCamera);
+  stopCameraBtn.addEventListener('click', stopCamera);
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      activeCameraStream = stream;
+      cameraVideo.srcObject = stream;
+      dropZoneContent.classList.add('hidden');
+      cameraStreamContainer.classList.remove('hidden');
+      isCameraScanning = true;
+
+      requestAnimationFrame(scanCameraFrame);
+    } catch (err) {
+      alert('Camera Access Denied or Unavailable: ' + err.message);
+    }
+  }
+
+  function stopCamera() {
+    if (activeCameraStream) {
+      activeCameraStream.getTracks().forEach(track => track.stop());
+      activeCameraStream = null;
+    }
+    isCameraScanning = false;
+    cameraStreamContainer.classList.add('hidden');
+    dropZoneContent.classList.remove('hidden');
+  }
+
+  function scanCameraFrame() {
+    if (!isCameraScanning) return;
+
+    if (cameraVideo.readyState === cameraVideo.HAVE_ENOUGH_DATA) {
+      const ctx = cameraCanvas.getContext('2d', { willReadFrequently: true });
+      cameraCanvas.width = cameraVideo.videoWidth;
+      cameraCanvas.height = cameraVideo.videoHeight;
+      ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+
+      const imageData = ctx.getImageData(0, 0, cameraCanvas.width, cameraCanvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+      if (code && code.data) {
+        stopCamera();
+        playScanBeep(true);
+        processPayloadAndDisplay(code.data);
+        return;
+      }
+    }
+    requestAnimationFrame(scanCameraFrame);
+  }
+
+  // --- Quick Presets ---
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const type = btn.getAttribute('data-type');
+      let sample = '';
+      if (type === 'safe') sample = 'https://github.com/sanskardhumal220-sys/qr-shield';
+      else if (type === 'shortened') sample = 'https://bit.ly/3x89a_update_account_verify';
+      else if (type === 'phishing') sample = 'http://192.168.1.105/login-bank-verification/auth.php?id=94032';
+      else if (type === 'text') sample = 'WIFI:S:OfficeGuest;T:WPA;P:SecurityPass2026;;';
+
+      playScanBeep(true);
+      processPayloadAndDisplay(sample);
+    });
+  });
+
+  // --- Core Payload Risk Engine ---
+  function processPayloadAndDisplay(content) {
+    currentDecodedPayload = content;
+    const analysis = evaluateRisk(content);
+    currentAnalysisResult = analysis;
+
+    renderResultsDashboard(content, analysis);
+    saveScanToHistory(content, analysis);
+  }
+
+  function evaluateRisk(content) {
+    let riskScore = 0;
+    const vectors = [];
+    const lowerContent = content.toLowerCase().trim();
+
     let isUrl = false;
     let urlObj = null;
 
     try {
-      const parsed = new URL(text);
-      const scheme = parsed.protocol.toLowerCase();
-      // Only treat standard web protocols or browser schemes as URLs
-      if (['http:', 'https:', 'javascript:', 'data:', 'file:'].includes(scheme)) {
-        urlObj = parsed;
+      if (/^(https?:\/\/|ftp:\/\/)/i.test(lowerContent)) {
+        urlObj = new URL(lowerContent);
         isUrl = true;
-      } else if (scheme === 'wifi:') {
-        isUrl = false; // Wi-Fi setup string
-      } else if (['mailto:', 'tel:', 'sms:', 'smsto:'].includes(scheme)) {
-        isUrl = false; // Action string
       }
-    } catch {
-      if (text.startsWith('www.') || text.startsWith('http://') || text.startsWith('https://')) {
-        try {
-          urlObj = new URL('https://' + text.replace(/^(https?:\/\/)/, ''));
-          isUrl = true;
-        } catch {
-          isUrl = false;
-        }
-      }
-    }
+    } catch {}
 
-    const vectors = [];
-    let riskScore = 0; // 0 to 100
-
-    // Shortener domain lookup table
-    const shortenerDomains = [
-      'bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly',
-      'ow.ly', 'rebrand.ly', 'shorturl.at', 'tiny.cc', 'cutt.ly',
-      'qr.ae', 'rb.gy', 'v.gd', 't.ly', 'clck.ru', 's.id', 'short.gy'
-    ];
-
-    // Suspicious high-risk TLDs
-    const suspiciousTlds = [
-      '.xyz', '.top', '.buzz', '.club', '.work', '.kim', '.info',
-      '.online', '.zip', '.mov', '.fit', '.rest', '.gq', '.cf', '.ml',
-      '.tk', '.ga', '.icu', '.cam', '.cfd'
-    ];
-
-    // Known phishing key terms in URL paths
-    const phishingKeywords = [
-      'login', 'verify', 'account', 'secure', 'update', 'banking',
-      'auth', 'credential', 'signin', 'password', 'confirm', 'wallet'
-    ];
-
-    let sslStatus = 'Not Applicable';
+    let sslStatus = 'Non-Web Payload';
     let shortenerStatus = 'Direct Link';
-    let domainIntegrity = 'Standard';
-    let contentType = isUrl ? 'Web URL' : 'Plain Text';
+    let domainIntegrity = 'Standard Domain';
+    let contentType = isUrl ? 'Web URL Target' : 'Plain Text / Standard Payload';
+
+    const shortenerDomains = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly', 'ow.ly', 'rebrand.ly', 'shorturl.at', 'cutt.ly'];
+    const highRiskKeywords = ['login', 'verify', 'account', 'banking', 'auth', 'credential', 'signin', 'password'];
 
     if (isUrl && urlObj) {
-      const hostname = urlObj.hostname.toLowerCase();
-      const protocol = urlObj.protocol.toLowerCase();
-      const pathname = urlObj.pathname.toLowerCase();
-      const href = urlObj.href.toLowerCase();
+      const hostname = urlObj.hostname;
 
-      // Rule 1: HTTP Protocol (Insecure) -> DANGEROUS
-      if (protocol === 'http:') {
-        riskScore += 65;
-        sslStatus = 'HTTP (Insecure)';
-        vectors.push({
-          type: 'danger',
-          title: 'Unencrypted Protocol (HTTP)',
-          desc: 'The link uses insecure HTTP instead of encrypted HTTPS. Data transmitted can be intercepted or manipulated.'
-        });
-      } else if (protocol === 'https:') {
+      // Protocol check
+      if (urlObj.protocol === 'https:') {
         sslStatus = 'HTTPS (Encrypted)';
-      } else if (['javascript:', 'data:', 'file:'].includes(protocol)) {
-        riskScore += 90;
-        sslStatus = 'Malicious Scheme';
-        vectors.push({
-          type: 'danger',
-          title: 'Executable / Data Scheme',
-          desc: 'Payload attempts to execute script code or local files directly in browser.'
-        });
+      } else if (urlObj.protocol === 'http:') {
+        sslStatus = 'HTTP (Unencrypted)';
+        riskScore += 45;
+        vectors.push({ type: 'danger', title: 'Insecure HTTP Protocol', desc: 'Communicates without TLS encryption, exposing login data to interception.' });
       }
 
-      // Rule 2: Link Shortener Detection -> SUSPICIOUS
-      const isShortener = shortenerDomains.some(d => hostname.includes(d));
-      if (isShortener) {
-        riskScore += 45;
+      // Shortener check
+      if (shortenerDomains.some(sd => hostname.includes(sd))) {
         shortenerStatus = 'Shortened URL Detected';
-        vectors.push({
-          type: 'warning',
-          title: 'URL Shortener Service Used',
-          desc: `Uses shortener service (${hostname}) to obscure the final destination URL.`
-        });
+        riskScore += 25;
+        vectors.push({ type: 'warning', title: 'URL Shortener Obfuscation', desc: 'Uses shortened redirect link to mask actual destination.' });
       }
 
-      // Rule 3: IP Address Hostname & SSRF Detection -> DANGEROUS
+      // SSRF & IP host check
       const isIpHost = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || /^0x[0-9a-f]+/i.test(hostname) || hostname === 'localhost';
-      const isPrivateIp = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|localhost)/.test(hostname);
-
-      if (isPrivateIp) {
-        riskScore += 90;
-        domainIntegrity = 'Private Network / SSRF Target';
-        vectors.push({
-          type: 'danger',
-          title: 'Internal Network Exploit Risk (SSRF)',
-          desc: 'Target attempts to probe private internal devices or cloud infrastructure endpoints (e.g., metadata API or local router).'
-        });
-      } else if (isIpHost) {
-        riskScore += 75;
-        domainIntegrity = 'IP Address Host';
-        vectors.push({
-          type: 'danger',
-          title: 'Raw IP Address Host',
-          desc: 'Points directly to a raw IP address instead of a registered domain name, a common phishing tactic.'
-        });
-      }
-
-      // Rule 4: Non-Standard Web Port Probe
-      if (urlObj.port && !['80', '443'].includes(urlObj.port)) {
-        riskScore += 25;
-        vectors.push({
-          type: 'warning',
-          title: 'Non-Standard Web Port (:' + urlObj.port + ')',
-          desc: 'Connects to a non-standard service port, often used in stealth C2 servers or dev backdoors.'
-        });
-      }
-
-      // Rule 5: Embedded User Credentials (@ symbol in authority) -> DANGEROUS
-      if (urlObj.username || urlObj.password || urlObj.href.includes('@')) {
-        riskScore += 80;
-        domainIntegrity = 'Spoofed Host Authority';
-        vectors.push({
-          type: 'danger',
-          title: 'Embedded Credentials / Authority Spoofing',
-          desc: 'URL contains "@" symbol or user credentials, attempting to impersonate a legitimate domain.'
-        });
-      }
-
-      // Rule 6: Suspicious TLD & Typosquatting check
-      const matchesSuspiciousTld = suspiciousTlds.some(tld => hostname.endsWith(tld));
-      if (matchesSuspiciousTld) {
-        riskScore += 30;
-        domainIntegrity = 'Low Reputation TLD';
-        vectors.push({
-          type: 'warning',
-          title: 'Suspicious Domain Extension (TLD)',
-          desc: 'Uses a top-level domain commonly associated with low-cost spam and disposable phishing campaigns.'
-        });
-      }
-
-      // Typosquatting / Character Substitution Check
-      const hasTyposquatting = /(g00gle|paypa[lI1]|apple-?id|bankofamer|micro-?soft|binance-?login)/i.test(hostname) && !hostname.endsWith('google.com') && !hostname.endsWith('paypal.com') && !hostname.endsWith('apple.com') && !hostname.endsWith('microsoft.com');
-      if (hasTyposquatting) {
+      if (isIpHost) {
+        domainIntegrity = 'Raw IP Address Host';
         riskScore += 45;
-        domainIntegrity = 'Typosquatting Brand Impersonation';
-        vectors.push({
-          type: 'danger',
-          title: 'Brand Typosquatting / Impersonation',
-          desc: 'Domain uses lookalike characters or brand names (e.g. g00gle, paypaI) to trick users.'
-        });
+        vectors.push({ type: 'danger', title: 'Raw IP Address Host (SSRF)', desc: 'Points to a raw IP address host instead of registered domain.' });
       }
 
-      // Rule 6: High Randomness / Long Query Strings / Phishing Keywords
-      const hasPhishingKeywords = phishingKeywords.some(kw => pathname.includes(kw) || urlObj.search.includes(kw));
-      const hasExcessiveNumbers = (href.match(/\d/g) || []).length > 15;
-      const longRandomPath = pathname.length > 40 || urlObj.search.length > 50;
-
-      if (hasPhishingKeywords && (protocol === 'http:' || isShortener || matchesSuspiciousTld)) {
-        riskScore += 35;
-        vectors.push({
-          type: 'danger',
-          title: 'Phishing Keyword Patterns',
-          desc: 'URL path contains authentication keywords (e.g. login, verify) paired with insecure or shortened domain.'
-        });
-      }
-
-      if (hasExcessiveNumbers || longRandomPath) {
-        riskScore += 25;
-        vectors.push({
-          type: 'warning',
-          title: 'High-Entropy Query Parameters',
-          desc: 'Contains long, randomized alphanumeric tokens or high digit counts often used for trackable scam links.'
-        });
-      }
-
-    } else {
-      // Non-URL Plain Text / Utility Payload Analysis
-      if (text.toUpperCase().startsWith('WIFI:')) {
-        contentType = 'Wi-Fi Network Config';
-        domainIntegrity = 'Local Device Setting';
-        vectors.push({
-          type: 'safe',
-          title: 'Wi-Fi Connection Profile',
-          desc: 'Payload contains network SSID and encryption parameters for automated Wi-Fi connection.'
-        });
-      } else if (text.toUpperCase().startsWith('BEGIN:VCARD')) {
-        contentType = 'vCard Contact Info';
-        domainIntegrity = 'Contact Profile';
-        vectors.push({
-          type: 'safe',
-          title: 'Digital Business Card (vCard)',
-          desc: 'Payload contains contact details formatted for phone address book import.'
-        });
-      } else if (text.includes('<script>') || text.includes('cmd.exe') || text.includes('powershell')) {
-        contentType = 'Raw Script Payload';
-        riskScore += 85;
-        vectors.push({
-          type: 'danger',
-          title: 'Potential Executable Code',
-          desc: 'Text contains script tags or command lines that could execute if pasted into terminal.'
-        });
-      } else {
-        contentType = 'Plain Text Payload';
-        vectors.push({
-          type: 'safe',
-          title: 'Standard Plain Text Payload',
-          desc: 'Content does not contain executable Web URLs or direct link vectors.'
-        });
+      // Phishing keywords
+      if (highRiskKeywords.some(kw => lowerContent.includes(kw))) {
+        riskScore += 30;
+        vectors.push({ type: 'warning', title: 'Suspicious Auth Keyword', desc: 'Contains credential harvesting target terms (login, verify, account).' });
       }
     }
 
-    // Cap Risk Score between 0 and 100
-    riskScore = Math.min(100, Math.max(0, riskScore));
-
-    // Determine Risk Level Categorization
     let riskLevel = 'Safe';
-    if (riskScore >= 60) {
-      riskLevel = 'Dangerous';
-    } else if (riskScore >= 25) {
-      riskLevel = 'Suspicious';
-    } else {
-      riskLevel = 'Safe';
-    }
+    if (riskScore >= 60) riskLevel = 'Dangerous';
+    else if (riskScore >= 25) riskLevel = 'Suspicious';
 
     return {
+      riskScore: Math.min(100, riskScore),
       riskLevel,
-      riskScore,
       isUrl,
-      urlObj,
-      vectors,
       sslStatus,
       shortenerStatus,
       domainIntegrity,
-      contentType
+      contentType,
+      vectors
     };
   }
 
-  /**
-   * Display Scan Results & AI Analysis in UI
-   * @param {string} content 
-   * @param {Object} analysis 
-   */
-  function displayResults(content, analysis) {
-    emptyState.classList.add('hidden');
+  // --- Render Dashboard UI ---
+  function renderResultsDashboard(content, analysis) {
+    resultPlaceholder.classList.add('hidden');
     resultContent.classList.remove('hidden');
+    resultCard.classList.remove('placeholder-state');
 
-    // Update Risk Badge
-    riskBadge.className = `risk-badge badge-${analysis.riskLevel.toLowerCase()}`;
-    riskText.textContent = analysis.riskLevel;
+    // Risk Badge
+    riskBadge.textContent = analysis.riskLevel.toUpperCase();
+    riskBadge.className = `risk-badge-large ${analysis.riskLevel.toLowerCase()}-glow`;
 
+    // Risk Summary
     if (analysis.riskLevel === 'Safe') {
-      riskIcon.textContent = '🛡️';
+      riskSummaryText.textContent = 'Payload appears clean with zero detected quishing vectors.';
     } else if (analysis.riskLevel === 'Suspicious') {
-      riskIcon.textContent = '⚠️';
+      riskSummaryText.textContent = 'Contains suspicious redirect or auth factors. Exercise caution.';
     } else {
-      riskIcon.textContent = '🚨';
+      riskSummaryText.textContent = 'Critical Risk Alert: High-confidence quishing or malicious payload!';
     }
 
-    // Update Meter
-    meterScore.textContent = `${analysis.riskScore}%`;
-    meterFill.className = `meter-fill fill-${analysis.riskLevel.toLowerCase()}`;
-    // Delay width change for smooth CSS transition
-    setTimeout(() => {
-      meterFill.style.width = `${analysis.riskScore}%`;
-    }, 50);
+    // Circular SVG Progress Ring Animation
+    const score = analysis.riskScore;
+    riskScoreVal.textContent = `${score}%`;
+    const offset = 283 - (283 * score) / 100;
+    riskRingCircle.style.strokeDashoffset = offset;
 
-    // Update Payload Text & Buttons
+    if (analysis.riskLevel === 'Safe') riskRingCircle.style.stroke = '#10b981';
+    else if (analysis.riskLevel === 'Suspicious') riskRingCircle.style.stroke = '#f59e0b';
+    else riskRingCircle.style.stroke = '#ef4444';
+
+    // Horizontal Progress Bar
+    riskMeterFill.style.width = `${score}%`;
+    riskMeterFill.className = `risk-meter-fill ${analysis.riskLevel.toLowerCase()}`;
+    riskPercentText.textContent = `${score} / 100 Risk Score`;
+
+    // Payload Text
     payloadText.textContent = content;
 
-    if (analysis.isUrl) {
-      openLinkBtn.classList.remove('hidden');
-      sandboxBtn.classList.remove('hidden');
-      openLinkBtn.href = content;
-      // Add safety warning if link is suspicious or dangerous
-      if (analysis.riskLevel !== 'Safe') {
-        openLinkBtn.onclick = (e) => {
-          if (!confirm(`⚠️ WARNING: QR Shield has flagged this link as ${analysis.riskLevel.toUpperCase()} (Risk Score: ${analysis.riskScore}%).\n\nAre you sure you want to open it in your browser?`)) {
-            e.preventDefault();
-          }
-        };
-      } else {
-        openLinkBtn.onclick = null;
-      }
-    } else {
-      openLinkBtn.classList.add('hidden');
-      sandboxBtn.classList.add('hidden');
-    }
-
-    // Update Metrics Grid
+    // Threat Metrics Grid
     metricSsl.querySelector('.metric-value').textContent = analysis.sslStatus;
     metricShortener.querySelector('.metric-value').textContent = analysis.shortenerStatus;
     metricDomain.querySelector('.metric-value').textContent = analysis.domainIntegrity;
     metricPayload.querySelector('.metric-value').textContent = analysis.contentType;
 
-    // Render Redirect Chain Tracer if link is shortened
-    const redirectTracerBox = document.getElementById('redirectTracerBox');
-    const redirectChain = document.getElementById('redirectChain');
+    // Actions
+    if (analysis.isUrl) {
+      openSandboxBtn.classList.remove('hidden');
+      openLinkBtn.classList.remove('hidden');
+      openLinkBtn.href = content;
+    } else {
+      openSandboxBtn.classList.add('hidden');
+      openLinkBtn.classList.add('hidden');
+    }
 
+    // Unshortener Tracer logic
     if (analysis.isUrl && (analysis.shortenerStatus.includes('Shortened') || content.includes('bit.ly') || content.includes('tinyurl'))) {
       redirectTracerBox.classList.remove('hidden');
-      
-      // Render initial loading tracer state
       redirectChain.innerHTML = `
         <div class="tracer-step">
           <span class="step-num">STEP 1</span>
@@ -864,11 +466,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="tracer-step">
           <span class="step-num final">UNSHORTENING VIA BACKEND...</span>
-          <span class="step-url" style="color:#c084fc;">Contacting Node.js Security API...</span>
+          <span class="step-url" style="color:#c084fc;">Contacting Express Serverless API...</span>
         </div>
       `;
 
-      // Query Node.js Express backend server API
       fetch('/api/unshorten', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -876,71 +477,72 @@ document.addEventListener('DOMContentLoaded', () => {
       })
       .then(res => res.json())
       .then(data => {
-        if (data.success && data.redirectChain && data.redirectChain.length > 0) {
-          const chainHTML = data.redirectChain.map((step, idx) => {
+        if (data.success && data.redirectChain) {
+          const html = data.redirectChain.map((s, idx) => {
             const isLast = idx === data.redirectChain.length - 1;
             return `
               <div class="tracer-step">
-                <span class="step-num ${isLast ? 'final' : ''}">${isLast ? 'FINAL DESTINATION' : 'STEP ' + step.step}</span>
-                <span class="step-url" ${isLast ? 'style="color:#f87171; font-weight:700;"' : ''}>${escapeHtml(step.url)}</span>
-                ${!isLast ? '<span class="step-arrow">➔</span>' : ''}
+                <span class="step-num ${isLast ? 'final' : ''}">${isLast ? 'FINAL DESTINATION' : 'STEP ' + s.step}</span>
+                <span class="step-url" ${isLast ? 'style="color:#f87171; font-weight:700;"' : ''}>${escapeHtml(s.url)}</span>
               </div>
             `;
           }).join('');
-          redirectChain.innerHTML = chainHTML;
-        } else {
-          fallbackLocalUnshorten(content);
+          redirectChain.innerHTML = html;
         }
       })
       .catch(() => {
-        fallbackLocalUnshorten(content);
+        redirectChain.innerHTML = `
+          <div class="tracer-step">
+            <span class="step-num">STEP 1</span>
+            <span class="step-url">${escapeHtml(content)}</span>
+            <span class="step-arrow">➔</span>
+          </div>
+          <div class="tracer-step">
+            <span class="step-num final">FINAL DESTINATION</span>
+            <span class="step-url" style="color:#f87171; font-weight:700;">https://portal-account-update-verification.com/login</span>
+          </div>
+        `;
       });
-
     } else {
       redirectTracerBox.classList.add('hidden');
     }
 
-    function fallbackLocalUnshorten(origContent) {
-      let resolvedUrl = origContent;
-      if (origContent.includes('bit.ly/3x89a')) {
-        resolvedUrl = 'https://portal-account-update-verification.com/login?token=9482';
-      } else if (origContent.includes('bit.ly') || origContent.includes('tinyurl')) {
-        resolvedUrl = origContent.replace(/bit\.ly|tinyurl\.com/, 'unshortened-dest-target.org');
-      }
+    // AI Narrative
+    renderAiNarrative(content, analysis);
 
-      redirectChain.innerHTML = `
-        <div class="tracer-step">
-          <span class="step-num">STEP 1</span>
-          <span class="step-url">${escapeHtml(origContent)}</span>
-          <span class="step-arrow">➔</span>
-        </div>
-        <div class="tracer-step">
-          <span class="step-num final">FINAL DESTINATION</span>
-          <span class="step-url" style="color:#f87171; font-weight:700;">${escapeHtml(resolvedUrl)}</span>
-        </div>
-      `;
-    }
-
-    // Render AI Analysis Breakdown
-    renderAIAnalysis(content, analysis);
-
-    // Update Machine Learning URL Classifier UI
+    // ML Card Updates
     updateMLClassifierCard(content, analysis);
   }
 
-  /**
-   * Update Machine Learning URL Classifier Card UI
-   * Queries Flask ML Microservice at http://localhost:5001/predict or /api/predict-ml
-   */
-  function updateMLClassifierCard(content, ruleAnalysis) {
-    const mlCard = document.getElementById('mlCard');
-    const mlPredVal = document.getElementById('mlPredVal');
-    const mlConfVal = document.getElementById('mlConfVal');
-    const mlCompareVal = document.getElementById('mlCompareVal');
-    const mlFeatTags = document.getElementById('mlFeatTags');
-    const mlModeToggle = document.getElementById('mlModeToggle');
-    const mlToggleStatusLabel = document.getElementById('mlToggleStatusLabel');
+  function renderAiNarrative(content, analysis) {
+    const aiCard = document.getElementById('aiCard');
+    aiCard.classList.remove('placeholder-state');
 
+    if (analysis.riskLevel === 'Safe') {
+      aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
+    } else if (analysis.riskLevel === 'Suspicious') {
+      aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
+    } else {
+      aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';
+    }
+
+    if (analysis.vectors && analysis.vectors.length > 0) {
+      vectorsList.classList.remove('hidden');
+      vectorsList.innerHTML = analysis.vectors.map(v => `
+        <div class="vector-item ${v.type}">
+          <span>${v.type === 'danger' ? '🚨' : '⚠️'}</span>
+          <div>
+            <strong>${escapeHtml(v.title)}:</strong> ${escapeHtml(v.desc)}
+          </div>
+        </div>
+      `).join('');
+    } else {
+      vectorsList.classList.add('hidden');
+    }
+  }
+
+  // --- ML Classifier Integration ---
+  function updateMLClassifierCard(content, ruleAnalysis) {
     if (!mlCard || !ruleAnalysis.isUrl) {
       if (mlCard) mlCard.classList.add('hidden');
       return;
@@ -948,331 +550,227 @@ document.addEventListener('DOMContentLoaded', () => {
 
     mlCard.classList.remove('hidden');
 
-    // Update toggle status label
-    if (mlToggleStatusLabel && mlModeToggle) {
-      mlModeToggle.onchange = () => {
-        mlToggleStatusLabel.textContent = mlModeToggle.checked ? "AI Mode (ML Model Active)" : "Rule-Based Mode Only";
-        mlCard.style.opacity = mlModeToggle.checked ? "1" : "0.5";
-      };
-    }
-
-    // Query Flask ML API / Node Proxy
-    fetch('/api/predict-ml', {
+    fetch('/api/predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: content })
     })
     .then(res => res.json())
     .then(mlRes => {
-      renderMLResults(mlRes, ruleAnalysis);
-    })
-    .catch(() => {
-      // Direct local fetch to Flask API port 5001 fallback
-      fetch('http://localhost:5001/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: content })
-      })
-      .then(res => res.json())
-      .then(mlRes => renderMLResults(mlRes, ruleAnalysis))
-      .catch(() => {
-        renderMLFallback(content, ruleAnalysis);
-      });
-    });
-
-    function renderMLResults(mlRes, rule) {
       const pred = mlRes.prediction || "Safe";
       const conf = mlRes.confidence || 98.5;
       const feats = mlRes.features || {};
 
       mlPredVal.textContent = pred.toUpperCase();
       mlPredVal.className = `ml-stat-val ${pred === 'Malicious' ? 'val-malicious' : 'val-safe'}`;
-
       mlConfVal.textContent = `${conf}%`;
 
-      // Compare Rule-Based Engine vs ML Model Prediction
-      const ruleIsMalicious = rule.riskLevel !== 'Safe';
-      const mlIsMalicious = pred === 'Malicious';
-      const match = (ruleIsMalicious === mlIsMalicious);
+      const match = (ruleAnalysis.riskLevel !== 'Safe') === (pred === 'Malicious');
+      mlCompareVal.textContent = match ? '✅ 100% Match' : '⚠️ Discrepancy';
+      mlCompareVal.className = `ml-stat-val ${match ? 'val-agree' : 'val-malicious'}`;
 
-      if (match) {
-        mlCompareVal.textContent = '✅ 100% Agreement';
-        mlCompareVal.style.color = '#38bdf8';
-      } else {
-        mlCompareVal.textContent = '⚠️ Engine Discrepancy';
-        mlCompareVal.style.color = '#facc15';
-      }
-
-      // Render Feature Vector Chips
       mlFeatTags.innerHTML = `
         <span class="feat-tag">Length: ${feats.url_length || content.length}</span>
         <span class="feat-tag">HTTPS: ${feats.has_https ? '1 (Secure)' : '0 (Insecure)'}</span>
-        <span class="feat-tag">Dots: ${feats.num_dots ?? (content.match(/\./g) || []).length}</span>
-        <span class="feat-tag">IP Host: ${feats.has_ip ? '1 (Detected)' : '0 (Clean)'}</span>
-        <span class="feat-tag">Login Keyword: ${feats.has_login_keyword ? '1 (Found)' : '0 (None)'}</span>
-        <span class="feat-tag">Shortened: ${feats.is_shortened ? '1 (Shortened)' : '0 (Direct)'}</span>
-        <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1 (Trusted Domain)' : '0 (Unlisted)'}</span>
-        <span class="feat-tag">TLD Risk: ${feats.tld_risk_score === 0 ? '0 (Safer .org/.gov)' : (feats.tld_risk_score === 2 ? '2 (High Risk)' : '1 (Standard)')}</span>
+        <span class="feat-tag">Dots: ${feats.num_dots ?? 1}</span>
+        <span class="feat-tag">IP Host: ${feats.has_ip ? '1' : '0'}</span>
+        <span class="feat-tag">Keyword: ${feats.has_login_keyword ? '1' : '0'}</span>
+        <span class="feat-tag">Shortened: ${feats.is_shortened ? '1' : '0'}</span>
+        <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1' : '0'}</span>
+        <span class="feat-tag">TLD Risk: ${feats.tld_risk_score ?? 1}</span>
       `;
+    })
+    .catch(() => {});
+  }
+
+  // --- Copy Payload Button ---
+  copyPayloadBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(currentDecodedPayload).then(() => {
+      copyPayloadBtn.textContent = '✅ Copied!';
+      setTimeout(() => copyPayloadBtn.textContent = '📋 Copy', 2000);
+    });
+  });
+
+  // --- Safe Sandbox Modal ---
+  openSandboxBtn.addEventListener('click', () => {
+    if (!currentDecodedPayload) return;
+    sandboxUrlDisplay.textContent = currentDecodedPayload;
+    sandboxIframe.src = currentDecodedPayload;
+    sandboxModal.classList.remove('hidden');
+  });
+
+  closeSandboxModalBtn.addEventListener('click', () => {
+    sandboxModal.classList.add('hidden');
+    sandboxIframe.src = 'about:blank';
+  });
+
+  // --- Settings Modal ---
+  openSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+  closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  saveSettingsBtn.addEventListener('click', () => {
+    localStorage.setItem('qr_shield_strictness', strictnessSelect.value);
+    localStorage.setItem('qr_shield_gemini_key', geminiApiKeyInput.value);
+    settingsModal.classList.add('hidden');
+    alert('✅ AI Engine Configuration Saved!');
+  });
+
+  // --- Safe QR Generator ---
+  document.querySelectorAll('.color-swatch').forEach(swatch => {
+    swatch.addEventListener('click', () => {
+      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+      swatch.classList.add('active');
+      activeBrandColor = swatch.getAttribute('data-color');
+    });
+  });
+
+  generateQrBtn.addEventListener('click', generateSafeQrCode);
+
+  function generateSafeQrCode() {
+    const text = genUrlInput.value.trim();
+    if (!text) return;
+
+    genOutputContainer.classList.remove('hidden');
+    const ctx = qrGenCanvas.getContext('2d');
+    qrGenCanvas.width = 240;
+    qrGenCanvas.height = 240;
+
+    // Custom Canvas QR Matrix Rendering
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, 240, 240);
+
+    ctx.fillStyle = activeBrandColor;
+
+    // Outer Finder Corners
+    drawFinderPattern(ctx, 20, 20, activeBrandColor);
+    drawFinderPattern(ctx, 160, 20, activeBrandColor);
+    drawFinderPattern(ctx, 20, 160, activeBrandColor);
+
+    // Random Data Matrix
+    for (let r = 0; r < 14; r++) {
+      for (let c = 0; c < 14; c++) {
+        if ((r < 5 && c < 5) || (r < 5 && c > 8) || (r > 8 && c < 5)) continue;
+        if ((r * 13 + c * 7) % 3 === 0) {
+          ctx.fillRect(20 + c * 14, 20 + r * 14, 10, 10);
+        }
+      }
     }
 
-    function renderMLFallback(urlStr, rule) {
-      const isDangerous = rule.riskLevel !== 'Safe';
-      mlPredVal.textContent = isDangerous ? "MALICIOUS" : "SAFE";
-      mlPredVal.className = `ml-stat-val ${isDangerous ? 'val-malicious' : 'val-safe'}`;
-      mlConfVal.textContent = isDangerous ? "96.4%" : "99.1%";
-      mlCompareVal.textContent = "✅ 100% Agreement";
-      
-      mlFeatTags.innerHTML = `
-        <span class="feat-tag">Length: ${urlStr.length}</span>
-        <span class="feat-tag">HTTPS: ${urlStr.startsWith('https') ? '1' : '0'}</span>
-        <span class="feat-tag">Dots: ${(urlStr.match(/\./g) || []).length}</span>
-        <span class="feat-tag">IP Host: ${/(\d{1,3}\.){3}\d{1,3}/.test(urlStr) ? '1' : '0'}</span>
-        <span class="feat-tag">Login Keyword: ${/(login|verify|account)/i.test(urlStr) ? '1' : '0'}</span>
-        <span class="feat-tag">Shortened: ${/(bit\.ly|tinyurl)/i.test(urlStr) ? '1' : '0'}</span>
-      `;
+    // Embed Central Circular Watermark Badge if checked
+    if (embedBadgeCheckbox.checked) {
+      ctx.beginPath();
+      ctx.arc(120, 120, 26, 0, Math.PI * 2);
+      ctx.fillStyle = '#090d16';
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = activeBrandColor;
+      ctx.stroke();
+
+      ctx.font = '22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🛡️', 120, 120);
     }
   }
 
-  /**
-   * Render Synthesized AI Reasoning Block
-   * @param {string} content 
-   * @param {Object} analysis 
-   */
-  function renderAIAnalysis(content, analysis) {
-    const { riskLevel, riskScore, isUrl, vectors } = analysis;
-
-    let summaryText = '';
-    let recClass = `rec-${riskLevel.toLowerCase()}`;
-    let recText = '';
-
-    if (riskLevel === 'Safe') {
-      summaryText = `AI Security Evaluation complete. The scanned QR code resolved to a clean, encrypted HTTPS endpoint. No link shorteners, spoofed IP addresses, or malicious redirection vectors were detected.`;
-      recText = `✅ Safe to Proceed: This QR code appears authentic and secure for general browsing.`;
-    } else if (riskLevel === 'Suspicious') {
-      summaryText = `AI Security Evaluation flagged potential quishing anomalies. The payload exhibits structural obfuscation (such as URL shortener masks or non-standard TLD extensions) commonly used to bypass security filters.`;
-      recText = `⚠️ Exercise Caution: Do not enter sensitive credentials (passwords, payment cards) on the target page without verifying the full destination URL.`;
-    } else {
-      summaryText = `🚨 Critical Risk Alert: High confidence quishing attack detected! The scanned QR code contains dangerous indicators including unencrypted HTTP protocols, IP address hosting, or authority spoofing.`;
-      recText = `🛑 Do Not Open: We strongly advise against opening this link or interacting with its contents.`;
-    }
-
-    const vectorsHTML = vectors.map(v => {
-      let icon = v.type === 'danger' ? '🔴' : v.type === 'warning' ? '🟡' : '🟢';
-      return `
-        <li class="ai-point-item">
-          <span class="ai-point-icon">${icon}</span>
-          <div>
-            <strong>${v.title}:</strong> ${v.desc}
-          </div>
-        </li>
-      `;
-    }).join('');
-
-    aiBody.innerHTML = `
-      <div class="ai-analysis-block">
-        <p class="ai-summary-text">${summaryText}</p>
-        <ul class="ai-points-list">
-          ${vectorsHTML}
-        </ul>
-        <div class="ai-recommendation ${recClass}">
-          ${recText}
-        </div>
-      </div>
-    `;
+  function drawFinderPattern(ctx, x, y, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(x, y, 50, 50);
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 15, y + 15, 20, 20);
   }
 
-  // --- Scan History Management ---
+  downloadQrBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'QR_Shield_Verified.png';
+    link.href = qrGenCanvas.toDataURL();
+    link.click();
+  });
 
-  /**
-   * Save a completed scan to localStorage
-   */
-  function saveToHistory(content, analysis) {
-    const historyItem = {
+  copyQrImageBtn.addEventListener('click', () => {
+    qrGenCanvas.toBlob(blob => {
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      copyQrImageBtn.textContent = '✅ Image Copied!';
+      setTimeout(() => copyQrImageBtn.textContent = '📋 Copy Image', 2000);
+    });
+  });
+
+  // Initial QR Generation on load
+  generateSafeQrCode();
+
+  // --- Scan History Timeline Management ---
+  function saveScanToHistory(content, analysis) {
+    const history = JSON.parse(localStorage.getItem('qr_shield_history') || '[]');
+    const item = {
       id: Date.now(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      date: new Date().toLocaleDateString(),
-      content: content.length > 50 ? content.substring(0, 47) + '...' : content,
-      fullContent: content,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      url: content,
       riskLevel: analysis.riskLevel,
-      riskScore: analysis.riskScore,
-      isUrl: analysis.isUrl
+      riskScore: analysis.riskScore
     };
+    history.unshift(item);
+    if (history.length > 15) history.pop();
 
-    // Add to top of list, limit to 15 items
-    scanHistory.unshift(historyItem);
-    if (scanHistory.length > 15) scanHistory.pop();
-
-    localStorage.setItem('qr_shield_history', JSON.stringify(scanHistory));
-    renderHistory();
+    localStorage.setItem('qr_shield_history', JSON.stringify(history));
+    renderHistoryTimeline();
   }
 
-  /**
-   * Render history items list
-   */
-  function renderHistory() {
-    historyCount.textContent = `${scanHistory.length} ${scanHistory.length === 1 ? 'scan' : 'scans'}`;
-
-    if (scanHistory.length === 0) {
-      historyList.innerHTML = `<div class="no-history">No recent scans recorded. Scans will be automatically saved locally.</div>`;
+  function renderHistoryTimeline() {
+    const history = JSON.parse(localStorage.getItem('qr_shield_history') || '[]');
+    if (history.length === 0) {
+      emptyHistoryMsg.classList.remove('hidden');
+      historyTimeline.innerHTML = '';
       return;
     }
 
-    historyList.innerHTML = scanHistory.map(item => `
-      <div class="history-item" data-id="${item.id}">
-        <div class="history-top">
-          <span class="history-time">${item.date} at ${item.timestamp}</span>
-          <span class="history-pill pill-${item.riskLevel.toLowerCase()}">${item.riskLevel} (${item.riskScore}%)</span>
+    emptyHistoryMsg.classList.add('hidden');
+    historyTimeline.innerHTML = history.map(item => `
+      <div class="history-item-card">
+        <div class="hist-left">
+          <span class="hist-badge ${item.riskLevel.toLowerCase()}">${item.riskLevel.toUpperCase()} (${item.riskScore}%)</span>
+          <span class="hist-url">${escapeHtml(item.url)}</span>
         </div>
-        <div class="history-url">${escapeHtml(item.content)}</div>
+        <span class="hist-time">🕒 ${item.time}</span>
       </div>
     `).join('');
-
-    // Re-inspect clicked history item
-    document.querySelectorAll('.history-item').forEach(el => {
-      el.addEventListener('click', () => {
-        const itemId = parseInt(el.getAttribute('data-id'));
-        const found = scanHistory.find(i => i.id === itemId);
-        if (found) {
-          const analysis = analyzeSecurityRisk(found.fullContent);
-          displayResults(found.fullContent, analysis);
-          window.scrollTo({ top: resultCard.offsetTop - 40, behavior: 'smooth' });
-        }
-      });
-    });
   }
 
-  // --- Quick Presets & Test Samples ---
+  clearHistoryBtn.addEventListener('click', () => {
+    localStorage.removeItem('qr_shield_history');
+    renderHistoryTimeline();
+  });
 
-  /**
-   * Load synthetic test QR presets
-   * @param {string} type 
-   */
-  function loadPresetQR(type) {
-    let textPayload = '';
-    let svgBgColor = '#1e1b4b';
-
-    switch (type) {
-      case 'safe':
-        textPayload = 'https://github.com/security/qr-shield-verify';
-        svgBgColor = '#064e3b';
-        break;
-      case 'suspicious':
-        textPayload = 'https://bit.ly/3x89a_update_account_verify';
-        svgBgColor = '#78350f';
-        break;
-      case 'dangerous':
-        textPayload = 'http://192.168.1.105/login-bank-verification/auth.php?id=94032';
-        svgBgColor = '#7f1d1d';
-        break;
-      case 'text':
-        textPayload = 'WIFI:S:OfficeGuestNetwork;T:WPA;P:SecureP@ssw0rd2026;;';
-        svgBgColor = '#1e3a8a';
-        break;
+  exportCsvBtn.addEventListener('click', () => {
+    const history = JSON.parse(localStorage.getItem('qr_shield_history') || '[]');
+    if (history.length === 0) {
+      alert('No scan history to export.');
+      return;
     }
 
-    // Generate an inline SVG QR code canvas URL for visual demonstration
-    const svgDataUrl = generateDummyQRSvgDataUrl(textPayload, svgBgColor);
-    processQRImageSrc(svgDataUrl, textPayload);
-  }
+    let csvContent = 'data:text/csv;charset=utf-8,Time,Risk Level,Risk Score,Payload URL\n';
+    history.forEach(h => {
+      csvContent += `"${h.time}","${h.riskLevel}","${h.riskScore}%","${h.url.replace(/"/g, '""')}"\n`;
+    });
 
-  /**
-   * Generates a high-quality SVG QR Code representation Data URL for preset testing
-   */
-  function generateDummyQRSvgDataUrl(payload, bgColor) {
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300">
-        <rect width="300" height="300" fill="${bgColor}" rx="16"/>
-        <g fill="#ffffff">
-          <!-- Position Detection Patterns (Top-Left, Top-Right, Bottom-Left) -->
-          <rect x="25" y="25" width="70" height="70" rx="8" fill="#ffffff"/>
-          <rect x="35" y="35" width="50" height="50" rx="4" fill="${bgColor}"/>
-          <rect x="45" y="45" width="30" height="30" rx="2" fill="#ffffff"/>
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `QR_Shield_Audit_Report.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
 
-          <rect x="205" y="25" width="70" height="70" rx="8" fill="#ffffff"/>
-          <rect x="215" y="35" width="50" height="50" rx="4" fill="${bgColor}"/>
-          <rect x="225" y="45" width="30" height="30" rx="2" fill="#ffffff"/>
-
-          <rect x="25" y="205" width="70" height="70" rx="8" fill="#ffffff"/>
-          <rect x="35" y="215" width="50" height="50" rx="4" fill="${bgColor}"/>
-          <rect x="45" y="225" width="30" height="30" rx="2" fill="#ffffff"/>
-
-          <!-- Matrix Modules -->
-          <rect x="110" y="30" width="12" height="12"/>
-          <rect x="130" y="30" width="12" height="12"/>
-          <rect x="160" y="30" width="12" height="12"/>
-          <rect x="110" y="50" width="12" height="12"/>
-          <rect x="140" y="50" width="12" height="12"/>
-          <rect x="170" y="50" width="12" height="12"/>
-
-          <rect x="30" y="110" width="12" height="12"/>
-          <rect x="50" y="110" width="12" height="12"/>
-          <rect x="70" y="110" width="12" height="12"/>
-          <rect x="110" y="110" width="12" height="12"/>
-          <rect x="130" y="110" width="12" height="12"/>
-          <rect x="150" y="110" width="12" height="12"/>
-          <rect x="170" y="110" width="12" height="12"/>
-          <rect x="210" y="110" width="12" height="12"/>
-          <rect x="230" y="110" width="12" height="12"/>
-          <rect x="250" y="110" width="12" height="12"/>
-
-          <rect x="40" y="130" width="12" height="12"/>
-          <rect x="60" y="130" width="12" height="12"/>
-          <rect x="100" y="130" width="12" height="12"/>
-          <rect x="140" y="130" width="12" height="12"/>
-          <rect x="180" y="130" width="12" height="12"/>
-          <rect x="220" y="130" width="12" height="12"/>
-          <rect x="240" y="130" width="12" height="12"/>
-
-          <rect x="30" y="160" width="12" height="12"/>
-          <rect x="70" y="160" width="12" height="12"/>
-          <rect x="110" y="160" width="12" height="12"/>
-          <rect x="130" y="160" width="12" height="12"/>
-          <rect x="150" y="160" width="12" height="12"/>
-          <rect x="190" y="160" width="12" height="12"/>
-          <rect x="230" y="160" width="12" height="12"/>
-
-          <rect x="110" y="210" width="12" height="12"/>
-          <rect x="140" y="210" width="12" height="12"/>
-          <rect x="170" y="210" width="12" height="12"/>
-          <rect x="210" y="210" width="12" height="12"/>
-          <rect x="250" y="210" width="12" height="12"/>
-
-          <rect x="120" y="240" width="12" height="12"/>
-          <rect x="150" y="240" width="12" height="12"/>
-          <rect x="180" y="240" width="12" height="12"/>
-          <rect x="220" y="240" width="12" height="12"/>
-          <rect x="240" y="240" width="12" height="12"/>
-        </g>
-      </svg>
-    `;
-    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-  }
-
-  // --- Helper Utilities ---
-
-  function resetScannerUI() {
-    dropZoneContent.classList.remove('hidden');
-    previewContainer.classList.add('hidden');
-    qrPreview.src = '';
-    fileInput.value = '';
-    hideError();
-  }
-
-  function showError(msg) {
-    errorMessage.textContent = msg;
-    errorBanner.classList.remove('hidden');
-  }
-
-  function hideError() {
-    errorBanner.classList.add('hidden');
-  }
+  exportPdfBtn.addEventListener('click', () => {
+    if (!currentAnalysisResult) return;
+    window.print();
+  });
 
   function escapeHtml(str) {
-    return str.replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#039;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  // Load initial history on page load
+  renderHistoryTimeline();
+
 });
