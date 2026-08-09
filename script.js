@@ -869,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       // Query Node.js Express backend server API
-      fetch('http://localhost:5000/api/unshorten', {
+      fetch('/api/unshorten', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: content })
