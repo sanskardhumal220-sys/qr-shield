@@ -1,5 +1,5 @@
 import pickle
-import pandas as pd
+import numpy as np
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -43,9 +43,9 @@ def predict():
         pred_label = "Malicious" if (feats['has_ip'] or feats['is_shortened'] or feats['has_login_keyword']) and not feats['is_whitelisted'] else "Safe"
         confidence = 85.0
     else:
-        df_input = pd.DataFrame([feats])[FEATURE_COLS]
-        pred_class = MODEL.predict(df_input)[0]
-        probs = MODEL.predict_proba(df_input)[0]
+        input_array = np.array([[feats[col] for col in FEATURE_COLS]])
+        pred_class = MODEL.predict(input_array)[0]
+        probs = MODEL.predict_proba(input_array)[0]
         confidence = round(float(probs[pred_class]) * 100, 2)
         pred_label = "Safe" if pred_class == 0 else "Malicious"
 
