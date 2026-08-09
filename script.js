@@ -428,8 +428,8 @@ document.addEventListener('DOMContentLoaded', () => {
     else {
       const ruleIsSafe = ruleRiskScore < 25;
       finalVerdict = (isMlSafe && ruleIsSafe) ? "SAFE" : "DANGEROUS";
-      decisionCase = "CASE 6: Complete Engine Consensus";
-      decisionReason = "Complete consensus achieved between Rule Engine heuristic analysis and Random Forest ML classifier.";
+      decisionCase = "CASE 6: Engine Consensus";
+      decisionReason = "Complete consensus achieved between Rule Engine heuristic analysis and XGBoost ML classifier.";
     }
 
     // Build Decision Metric Tags
@@ -629,9 +629,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Fallback static narrative
-    if (analysis.riskLevel === 'Safe') {
+    const displayLevel = (finalDecision ? finalDecision.finalVerdict : analysis.riskLevel).toUpperCase();
+    if (displayLevel === 'SAFE') {
       aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
-    } else if (analysis.riskLevel === 'Suspicious') {
+    } else if (displayLevel === 'SUSPICIOUS') {
       aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
     } else {
       aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';

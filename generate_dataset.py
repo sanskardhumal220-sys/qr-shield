@@ -139,7 +139,12 @@ def main():
 
     # 1. Generate 5,000 Safe Real-World URLs (label = 0)
     for i in range(5000):
-        domain = random.choice(SAFE_DOMAINS_WHITELIST)
+        if random.random() < 0.2:
+            domain = random.choice(SAFE_DOMAINS_WHITELIST)
+        else:
+            # Generate random realistic safe domains not on the whitelist
+            domain = f"my-safe-site-{random.randint(1,10000)}.com"
+        
         sub = random.choice(["docs", "support", "blog", "news", "developer", "api", "help", "auth", "login", "portal", "my", "static", "cdn", "v2", "m", ""])
         path = random.choice(["/index.html", "/article/2026/security", "/user/profile", "/docs/api/v1", "/questions/9842", "/search?q=test", "/login/status", "/verify", "/account/settings", ""])
         scheme = random.choice(["https://", "https://", "https://", "http://"])
