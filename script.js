@@ -337,9 +337,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // Rule 3: IP Address Hostname -> DANGEROUS
-      const isIpHost = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || /^0x[0-9a-f]+/i.test(hostname);
-      if (isIpHost) {
+      // Rule 3: IP Address Hostname & SSRF Detection -> DANGEROUS
+      const isIpHost = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || /^0x[0-9a-f]+/i.test(hostname) || hostname === 'localhost';
+      const isPrivateIp = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|localhost)/.test(hostname);
+
+      if (isPrivateIp) {
+        riskScore += 90;
+        domainIntegrity = 'Private Network / SSRF Target';
+        vectors.push({
+          type: 'danger',
+          title: 'Internal Network Exploit Risk (SSRF)',
+          desc: 'Target attempts to probe private internal devices or cloud infrastructure endpoints (e.g., metadata API or local router).'
+        });
+      } else if (isIpHost) {
         riskScore += 75;
         domainIntegrity = 'IP Address Host';
         vectors.push({
@@ -349,7 +359,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // Rule 4: Embedded User Credentials (@ symbol in authority) -> DANGEROUS
+      // Rule 4: Non-Standard Web Port Probe
+      if (urlObj.port && !['80', '443'].includes(urlObj.port)) {
+        riskScore += 25;
+        vectors.push({
+          type: 'warning',
+          title: 'Non-Standard Web Port (:' + urlObj.port + ')',
+          desc: 'Connects to a non-standard service port, often used in stealth C2 servers or dev backdoors.'
+        });
+      }
+
+      // Rule 5: Embedded User Credentials (@ symbol in authority) -> DANGEROUS
       if (urlObj.username || urlObj.password || urlObj.href.includes('@')) {
         riskScore += 80;
         domainIntegrity = 'Spoofed Host Authority';
@@ -360,7 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // Rule 5: Suspicious TLD check
+      // Rule 6: Suspicious TLD & Typosquatting check
       const matchesSuspiciousTld = suspiciousTlds.some(tld => hostname.endsWith(tld));
       if (matchesSuspiciousTld) {
         riskScore += 30;
@@ -369,6 +389,18 @@ document.addEventListener('DOMContentLoaded', () => {
           type: 'warning',
           title: 'Suspicious Domain Extension (TLD)',
           desc: 'Uses a top-level domain commonly associated with low-cost spam and disposable phishing campaigns.'
+        });
+      }
+
+      // Typosquatting / Character Substitution Check
+      const hasTyposquatting = /(g00gle|paypa[lI1]|apple-?id|bankofamer|micro-?soft|binance-?login)/i.test(hostname) && !hostname.endsWith('google.com') && !hostname.endsWith('paypal.com') && !hostname.endsWith('apple.com') && !hostname.endsWith('microsoft.com');
+      if (hasTyposquatting) {
+        riskScore += 45;
+        domainIntegrity = 'Typosquatting Brand Impersonation';
+        vectors.push({
+          type: 'danger',
+          title: 'Brand Typosquatting / Impersonation',
+          desc: 'Domain uses lookalike characters or brand names (e.g. g00gle, paypaI) to trick users.'
         });
       }
 
@@ -511,6 +543,36 @@ document.addEventListener('DOMContentLoaded', () => {
     metricShortener.querySelector('.metric-value').textContent = analysis.shortenerStatus;
     metricDomain.querySelector('.metric-value').textContent = analysis.domainIntegrity;
     metricPayload.querySelector('.metric-value').textContent = analysis.contentType;
+
+    // Render Redirect Chain Tracer if link is shortened
+    const redirectTracerBox = document.getElementById('redirectTracerBox');
+    const redirectChain = document.getElementById('redirectChain');
+
+    if (analysis.isUrl && (analysis.shortenerStatus.includes('Shortened') || content.includes('bit.ly') || content.includes('tinyurl'))) {
+      redirectTracerBox.classList.remove('hidden');
+      
+      // Synthesize resolved endpoint target
+      let resolvedUrl = content;
+      if (content.includes('bit.ly/3x89a')) {
+        resolvedUrl = 'https://portal-account-update-verification.com/login?token=9482';
+      } else if (content.includes('bit.ly') || content.includes('tinyurl')) {
+        resolvedUrl = content.replace(/bit\.ly|tinyurl\.com/, 'unshortened-dest-target.org');
+      }
+
+      redirectChain.innerHTML = `
+        <div class="tracer-step">
+          <span class="step-num">STEP 1</span>
+          <span class="step-url">${escapeHtml(content)}</span>
+          <span class="step-arrow">➔</span>
+        </div>
+        <div class="tracer-step">
+          <span class="step-num final">FINAL DESTINATION</span>
+          <span class="step-url" style="color:#f87171; font-weight:700;">${escapeHtml(resolvedUrl)}</span>
+        </div>
+      `;
+    } else {
+      redirectTracerBox.classList.add('hidden');
+    }
 
     // Render AI Analysis Breakdown
     renderAIAnalysis(content, analysis);

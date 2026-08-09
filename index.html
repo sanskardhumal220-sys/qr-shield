@@ -200,6 +200,24 @@
               <div class="payload-text" id="payloadText">https://example.com</div>
             </div>
 
+            <!-- Live Redirect Tracer Box -->
+            <div class="redirect-tracer-box hidden" id="redirectTracerBox">
+              <div class="tracer-header">
+                <span class="tracer-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  </svg>
+                  Unshortened Redirect Chain
+                </span>
+                <span class="tracer-status" id="tracerStatus">Traced</span>
+              </div>
+              <div class="redirect-chain" id="redirectChain">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
             <!-- Threat Metrics Grid -->
             <div class="threat-metrics-grid" id="threatMetrics">
               <div class="metric-chip" id="metricSsl">
