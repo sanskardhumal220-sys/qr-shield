@@ -196,16 +196,35 @@ const handlePredict = async (req, res) => {
       const has_login_keyword = /(login|verify|account|banking|secure|update|auth|credential|signin|password|confirm|wallet)/.test(urlLower) ? 1 : 0;
       const is_shortened = /(bit\.ly|tinyurl\.com|t\.co|goo\.gl|is\.gd|buff\.ly|ow\.ly|rebrand\.ly|shorturl\.at|cutt\.ly)/.test(hostname) ? 1 : 0;
 
+      const safeWhitelist = ['google.com', 'wikipedia.org', 'github.com', 'microsoft.com', 'apple.com', 'amazon.com', 'stackoverflow.com', 'cloudflare.com', 'w3schools.com', 'youtube.com', 'linkedin.com', 'twitter.com', 'facebook.com', 'nytimes.com', 'bbc.com', 'mit.edu', 'stanford.edu', 'harvard.edu', 'nih.gov', 'usa.gov'];
+      const highRiskTlds = ['.top', '.xyz', '.buzz', '.club', '.work', '.kim', '.info', '.online', '.site', '.vip', '.monster', '.zip', '.mov'];
+      const safeTlds = ['.gov', '.edu', '.org', '.mil', '.int'];
+
+      const is_whitelisted = (safeWhitelist.some(wd => hostname.endsWith(wd)) || safeTlds.some(stld => hostname.endswith ? hostname.endswith(stld) : hostname.endsWith(stld))) ? 1 : 0;
+
+      let tld_risk_score = 1;
+      if (safeTlds.some(stld => hostname.endsWith(stld))) {
+        tld_risk_score = 0;
+      } else if (highRiskTlds.some(rtld => hostname.endsWith(rtld))) {
+        tld_risk_score = 2;
+      }
+
       let riskScore = 0;
-      if (!has_https) riskScore += 45;
-      if (has_ip) riskScore += 40;
-      if (has_login_keyword) riskScore += 35;
-      if (is_shortened) riskScore += 25;
-      if (url_length > 60) riskScore += 15;
-      if (num_dots > 3) riskScore += 15;
+      if (is_whitelisted) {
+        riskScore = 0; // Trusted Domain Whitelist
+      } else {
+        if (has_ip) riskScore += 45;
+        if (has_login_keyword) riskScore += 35;
+        if (is_shortened) riskScore += 25;
+        if (tld_risk_score === 2) riskScore += 30;
+        if (!has_https && has_login_keyword) riskScore += 25; // HTTP only penalised if paired with phishing keywords!
+        if (url_length > 70) riskScore += 15;
+        if (num_dots > 3) riskScore += 15;
+        if (tld_risk_score === 0) riskScore -= 20; // Reduce risk for .gov / .edu / .org
+      }
 
       const isMalicious = riskScore >= 45;
-      const confidence = isMalicious ? Math.min(100.0, 75.0 + (riskScore * 0.35)) : Math.min(100.0, 99.5 - (riskScore * 0.4));
+      const confidence = is_whitelisted ? 100.0 : (isMalicious ? Math.min(99.0, 75.0 + (riskScore * 0.3)) : Math.min(99.5, 99.0 - (riskScore * 0.4)));
 
       return res.json({
         url: url,
@@ -222,7 +241,9 @@ const handlePredict = async (req, res) => {
           num_dots,
           has_ip,
           has_login_keyword,
-          is_shortened
+          is_shortened,
+          is_whitelisted,
+          tld_risk_score
         }
       });
     }

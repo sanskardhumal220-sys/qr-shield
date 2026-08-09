@@ -1,6 +1,6 @@
 """
-Model Training Script for QR Shield ML Classifier
-Trains a Random Forest Classifier on dataset.csv and exports model.pkl
+Model Training Script for QR Shield ML Classifier (Advanced 8-Feature Version)
+Trains a Random Forest Classifier on 2,000 dataset samples and exports model.pkl
 """
 
 import pickle
@@ -11,9 +11,9 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 def train_and_evaluate():
-    print("=" * 60)
-    print("[TRAIN] QR Shield ML Model Training Routine")
-    print("=" * 60)
+    print("=" * 65)
+    print("[TRAIN] QR Shield Advanced ML Model Training Routine")
+    print("=" * 65)
 
     # 1. Load Dataset
     df = pd.read_csv('dataset.csv')
@@ -21,8 +21,11 @@ def train_and_evaluate():
     print(f"   - Safe URLs (0): {len(df[df['label'] == 0])}")
     print(f"   - Malicious URLs (1): {len(df[df['label'] == 1])}")
 
-    # 2. Features and Target
-    feature_cols = ['url_length', 'has_https', 'num_dots', 'has_ip', 'has_login_keyword', 'is_shortened']
+    # 2. Advanced 8 Feature Columns
+    feature_cols = [
+        'url_length', 'has_https', 'num_dots', 'has_ip',
+        'has_login_keyword', 'is_shortened', 'is_whitelisted', 'tld_risk_score'
+    ]
     X = df[feature_cols]
     y = df['label']
 
@@ -36,7 +39,7 @@ def train_and_evaluate():
     # 4. Initialize & Train Random Forest Classifier
     rf_model = RandomForestClassifier(
         n_estimators=100,
-        max_depth=10,
+        max_depth=12,
         random_state=42,
         criterion='gini'
     )
@@ -47,14 +50,14 @@ def train_and_evaluate():
     accuracy = accuracy_score(y_test, y_pred)
     cm = confusion_matrix(y_test, y_pred)
 
-    print("\n" + "-" * 60)
-    print(f"[ACCURACY] Model Accuracy Score: {accuracy * 100:.2f}%")
-    print("-" * 60)
+    print("\n" + "-" * 65)
+    print(f"[ACCURACY] Advanced Model Accuracy Score: {accuracy * 100:.2f}%")
+    print("-" * 65)
     print("Classification Report:")
     print(classification_report(y_test, y_pred, target_names=['Safe (0)', 'Malicious (1)']))
     print("Confusion Matrix:")
     print(cm)
-    print("-" * 60)
+    print("-" * 65)
 
     # Feature Importance Breakdown
     print("Feature Importances:")
@@ -66,7 +69,7 @@ def train_and_evaluate():
     with open(model_filename, 'wb') as f:
         pickle.dump(rf_model, f)
 
-    print("\n[SUCCESS] Saved trained Random Forest model to 'model.pkl'!")
+    print("\n[SUCCESS] Saved retrained 8-Feature Random Forest model to 'model.pkl'!")
     return accuracy
 
 if __name__ == '__main__':

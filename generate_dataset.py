@@ -1,71 +1,24 @@
 """
-Dataset Generator for QR Shield ML Classifier
+Dataset Generator for QR Shield ML Classifier (Advanced 8-Feature Version)
+Generates 2,000+ balanced sample URLs (1,000 Safe, 1,000 Malicious) with whitelisting and TLD risk metrics.
 """
+
 import csv
 import re
 from urllib.parse import urlparse
+import random
 
-# Representative sample URLs for training dataset
-SAFE_URLS = [
-    "https://github.com/security/qr-shield",
-    "https://www.google.com/search?q=cybersecurity",
-    "https://en.wikipedia.org/wiki/Phishing",
-    "https://www.apple.com/support",
-    "https://microsoft.com/en-us/security",
-    "https://stackoverflow.com/questions/tagged/python",
-    "https://www.amazon.com/dp/B08N5WRWNW",
-    "https://docs.python.org/3/library/urllib.parse.html",
-    "https://www.nytimes.com/section/technology",
-    "https://github.com/scikit-learn/scikit-learn",
-    "https://www.cloudflare.com/learning/access-management/phishing-attacks/",
-    "https://medium.com/topic/cybersecurity",
-    "https://www.reddit.com/r/netsec/",
-    "https://developer.mozilla.org/en-US/docs/Web/HTTP",
-    "https://www.bbc.com/news/technology",
-    "https://www.pypi.org/project/scikit-learn/",
-    "https://www.npmJS.com/package/jsqr",
-    "https://www.scikit-learn.org/stable/modules/ensemble.html",
-    "https://www.khanacademy.org/computing/computer-science",
-    "https://news.ycombinator.com/",
-    "https://www.w3schools.com/html/default.asp",
-    "https://caniuse.com/",
-    "https://www.geeksforgeeks.org/machine-learning/",
-    "https://www.kaggle.com/datasets",
-    "https://huggingface.co/models",
-    "https://www.mit.edu/",
-    "https://www.stanford.edu/",
-    "https://www.harvard.edu/",
-    "https://www.reuters.com/technology",
-    "https://www.bloomberg.com/technology"
+SAFE_DOMAINS_WHITELIST = [
+    'google.com', 'wikipedia.org', 'github.com', 'microsoft.com', 'apple.com',
+    'amazon.com', 'stackoverflow.com', 'cloudflare.com', 'w3schools.com', 'youtube.com',
+    'linkedin.com', 'twitter.com', 'facebook.com', 'nytimes.com', 'bbc.com',
+    'mit.edu', 'stanford.edu', 'harvard.edu', 'nih.gov', 'usa.gov', 'pypi.org',
+    'npmjs.com', 'scikit-learn.org', 'khanacademy.org', 'reddit.com', 'geeksforgeeks.org',
+    'kaggle.com', 'huggingface.co', 'bloomberg.com', 'reuters.com', 'medium.com', 'httpbin.org'
 ]
 
-MALICIOUS_URLS = [
-    "http://192.168.1.105/login-bank-verification/auth.php?id=94032",
-    "http://bit.ly/3x89a_update_account_verify",
-    "http://secure-paypal-login-update-account.xyz/verify",
-    "http://appleid-support-verify-security.top/login.html",
-    "http://10.0.0.1/admin/login.php?session=9823472",
-    "http://g00gle-security-login-verify.buzz/auth",
-    "http://tinyurl.com/y8x9z7w2-banking-verify",
-    "http://paypaI-security-login.club/user/update",
-    "http://bankofamerıca-account-update.info/login",
-    "http://169.254.169.254/latest/meta-data/credentials",
-    "http://is.gd/verify_login_account_99823",
-    "http://binance-login-verification-secure.online/auth",
-    "http://microsoft-verify-account-credential.xyz/",
-    "http://192.168.0.1/login.html?user=admin&pass=secret",
-    "http://shorturl.at/xK921_login_banking",
-    "http://0x7f000001/admin/auth.php",
-    "http://account-verify-login-update-pass.top/",
-    "http://t.co/98x21A_verify_account",
-    "http://security-update-bank-login.buzz/verify",
-    "http://verify-account-paypal-secure-login.kim/",
-    "http://192.168.1.1/router-login-verify",
-    "http://cutt.ly/login_verify_bank_security",
-    "http://my-bank-login-verify-account-secure.xyz/app",
-    "http://login-verify-credential-update-security.top/",
-    "http://goo.gl/x98a1-login-verify"
-]
+HIGH_RISK_TLDS = ['.top', '.xyz', '.buzz', '.club', '.work', '.kim', '.info', '.online', '.site', '.vip', '.monster', '.zip', '.mov']
+SAFE_TLDS = ['.gov', '.edu', '.org', '.mil', '.int']
 
 SHORTENER_DOMAINS = [
     'bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly',
@@ -73,34 +26,47 @@ SHORTENER_DOMAINS = [
     'qr.ae', 'rb.gy', 'v.gd', 't.ly', 'clck.ru', 's.id', 'short.gy'
 ]
 
-LOGIN_KEYWORDS = ['login', 'verify', 'account', 'secure', 'update', 'banking', 'auth', 'credential', 'signin', 'password', 'confirm', 'wallet']
+LOGIN_KEYWORDS = [
+    'login', 'verify', 'account', 'secure', 'update', 'banking',
+    'auth', 'credential', 'signin', 'password', 'confirm', 'wallet'
+]
 
-def extract_features_from_url(url):
+def extract_advanced_features(url):
     """
-    Extracts numerical features from a URL string:
-    - url_length: Length of URL
-    - has_https: 1 if scheme is https, 0 otherwise
-    - num_dots: Count of '.' characters
-    - has_ip: 1 if hostname is IP address or contains IP pattern, 0 otherwise
-    - has_login_keyword: 1 if contains phishing keywords, 0 otherwise
-    - is_shortened: 1 if domain matches shortener list, 0 otherwise
+    Extracts 8 numerical features from a URL string:
+    1. url_length: Total length of URL string
+    2. has_https: 1 if HTTPS, 0 if HTTP
+    3. num_dots: Count of '.' characters
+    4. has_ip: 1 if raw IP host or hex IP address, 0 otherwise
+    5. has_login_keyword: 1 if suspicious auth keyword present, 0 otherwise
+    6. is_shortened: 1 if link shortener, 0 otherwise
+    7. is_whitelisted: 1 if domain in trusted whitelist, 0 otherwise
+    8. tld_risk_score: 0 (Safer .gov/.edu/.org), 1 (Standard .com/.net), 2 (High-Risk .top/.xyz/.buzz)
     """
-    url_lower = url.lower()
-    parsed = urlparse(url_lower)
-    hostname = parsed.hostname or url_lower
-
-    url_length = len(url)
-    has_https = 1 if parsed.scheme == 'https' or url_lower.startswith('https://') else 0
-    num_dots = url.count('.')
+    url_str = str(url).strip()
+    url_lower = url_str.lower()
     
-    # IP Host check
+    try:
+        parsed = urlparse(url_lower if '://' in url_lower else 'https://' + url_lower)
+        hostname = parsed.hostname or url_lower
+    except Exception:
+        hostname = url_lower
+
+    url_length = len(url_str)
+    has_https = 1 if url_lower.startswith('https://') or (parsed.scheme == 'https') else 0
+    num_dots = url_str.count('.')
     has_ip = 1 if re.search(r'(\d{1,3}\.){3}\d{1,3}', hostname) or re.search(r'0x[0-9a-f]+', hostname) else 0
-    
-    # Login keywords check
     has_login_keyword = 1 if any(kw in url_lower for kw in LOGIN_KEYWORDS) else 0
-    
-    # Shortener check
     is_shortened = 1 if any(sd in hostname for sd in SHORTENER_DOMAINS) else 0
+    
+    # Whitelist & TLD Analysis (Improvement: .org, .gov, .edu are automatically trusted)
+    is_whitelisted = 1 if (any(hostname.endswith(wd) for wd in SAFE_DOMAINS_WHITELIST) or any(hostname.endswith(stld) for stld in ['.gov', '.edu', '.org'])) else 0
+    
+    tld_risk_score = 1 # Default neutral .com/.net/.io
+    if any(hostname.endswith(stld) for stld in SAFE_TLDS):
+        tld_risk_score = 0 # High Trust (.gov, .edu, .org)
+    elif any(hostname.endswith(rtld) for rtld in HIGH_RISK_TLDS):
+        tld_risk_score = 2 # High Risk (.top, .xyz, .buzz)
 
     return {
         'url_length': url_length,
@@ -108,55 +74,62 @@ def extract_features_from_url(url):
         'num_dots': num_dots,
         'has_ip': has_ip,
         'has_login_keyword': has_login_keyword,
-        'is_shortened': is_shortened
+        'is_shortened': is_shortened,
+        'is_whitelisted': is_whitelisted,
+        'tld_risk_score': tld_risk_score
     }
 
 def main():
-    rows = []
-    
-    # Process Safe URLs (label = 0)
-    for url in SAFE_URLS:
-        feats = extract_features_from_url(url)
-        feats['label'] = 0
-        rows.append(feats)
-        
-    # Process Malicious URLs (label = 1)
-    for url in MALICIOUS_URLS:
-        feats = extract_features_from_url(url)
-        feats['label'] = 1
-        rows.append(feats)
-
-    # Synthesize additional variations for robust model generalization (total 1000+ samples)
-    import random
     random.seed(42)
+    rows = []
 
-    for _ in range(500):
-        # Synthetic Safe URL
-        domain = random.choice(["github.com", "google.com", "wikipedia.org", "apple.com", "microsoft.com", "amazon.com", "nytimes.com", "bbc.com", "stackoverflow.com", "cloudflare.com"])
-        sub = random.choice(["docs", "app", "blog", "api", "support", "news", "learn", ""])
-        path = random.choice(["/security/guide", "/item/9402", "/article/2026", "/docs/v2", "/search?q=test", "/home"])
-        s_url = f"https://{sub + '.' if sub else ''}{domain}{path}"
-        feats = extract_features_from_url(s_url)
+    # 1. Generate 1,000 Safe Real-World URLs (label = 0)
+    for _ in range(1000):
+        domain = random.choice(SAFE_DOMAINS_WHITELIST)
+        sub = random.choice(["docs", "support", "blog", "news", "developer", "api", "help", ""])
+        path = random.choice(["/index.html", "/article/2026/security", "/user/profile", "/docs/api/v1", "/questions/9842", "/search?q=test", ""])
+        scheme = random.choice(["https://", "https://", "https://", "http://"]) # Include HTTP safe sites to avoid marking HTTP always malicious!
+        
+        full_url = f"{scheme}{sub + '.' if sub else ''}{domain}{path}"
+        feats = extract_advanced_features(full_url)
         feats['label'] = 0
         rows.append(feats)
 
-        # Synthetic Malicious URL
-        m_domain = random.choice(["login-verify-account.xyz", "secure-bank-update.top", "192.168.1.100", "bit.ly/x942a", "tinyurl.com/verify88", "paypaI-auth-login.club"])
-        m_path = random.choice(["/auth.php?token=94827", "/verify-account/login", "/banking/credential", "/signin/password"])
-        m_proto = random.choice(["http://", "http://"])
-        m_url = f"{m_proto}{m_domain}{m_path}"
-        feats = extract_features_from_url(m_url)
+    # 2. Generate 1,000 Malicious Real-World Phishing URLs (label = 1)
+    phish_words = ["login", "verify", "account-update", "secure-banking", "auth-identity", "confirm-wallet", "security-alert"]
+    phish_tlds = [".top", ".xyz", ".buzz", ".club", ".work", ".kim", ".info", ".online", ".site"]
+    
+    for _ in range(1000):
+        is_ip_type = random.random() < 0.25
+        is_shortener_type = random.random() < 0.25
+        
+        if is_ip_type:
+            host = f"{random.randint(1,223)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
+            path = f"/{random.choice(phish_words)}/index.php?id={random.randint(1000,9999)}"
+            full_url = f"http://{host}{path}"
+        elif is_shortener_type:
+            sd = random.choice(SHORTENER_DOMAINS)
+            path = f"/{random.choice(phish_words)}_{random.randint(100,999)}"
+            full_url = f"http://{sd}{path}"
+        else:
+            brand = random.choice(["paypaI", "g00gle", "appIe-id", "microsoft-verify", "binance-secure", "bankofamerıca"])
+            tld = random.choice(phish_tlds)
+            path = f"/{random.choice(phish_words)}/update.html"
+            scheme = random.choice(["http://", "http://", "https://"]) # Include HTTPS phishing sites!
+            full_url = f"{scheme}{brand}{tld}{path}"
+            
+        feats = extract_advanced_features(full_url)
         feats['label'] = 1
         rows.append(feats)
 
     # Write to dataset.csv
-    fieldnames = ['url_length', 'has_https', 'num_dots', 'has_ip', 'has_login_keyword', 'is_shortened', 'label']
+    fieldnames = ['url_length', 'has_https', 'num_dots', 'has_ip', 'has_login_keyword', 'is_shortened', 'is_whitelisted', 'tld_risk_score', 'label']
     with open('dataset.csv', 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"[SUCCESS] Generated dataset.csv with {len(rows)} samples successfully!")
+    print(f"[SUCCESS] Generated 2,000 balanced sample URLs (1,000 Safe, 1,000 Malicious) into dataset.csv!")
 
 if __name__ == '__main__':
     main()

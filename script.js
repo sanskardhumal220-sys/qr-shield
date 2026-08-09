@@ -1011,6 +1011,8 @@ document.addEventListener('DOMContentLoaded', () => {
         <span class="feat-tag">IP Host: ${feats.has_ip ? '1 (Detected)' : '0 (Clean)'}</span>
         <span class="feat-tag">Login Keyword: ${feats.has_login_keyword ? '1 (Found)' : '0 (None)'}</span>
         <span class="feat-tag">Shortened: ${feats.is_shortened ? '1 (Shortened)' : '0 (Direct)'}</span>
+        <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1 (Trusted Domain)' : '0 (Unlisted)'}</span>
+        <span class="feat-tag">TLD Risk: ${feats.tld_risk_score === 0 ? '0 (Safer .org/.gov)' : (feats.tld_risk_score === 2 ? '2 (High Risk)' : '1 (Standard)')}</span>
       `;
     }
 
