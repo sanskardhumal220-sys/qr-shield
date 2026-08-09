@@ -855,14 +855,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (analysis.isUrl && (analysis.shortenerStatus.includes('Shortened') || content.includes('bit.ly') || content.includes('tinyurl'))) {
       redirectTracerBox.classList.remove('hidden');
       
-      // Synthesize resolved endpoint target
-      let resolvedUrl = content;
-      if (content.includes('bit.ly/3x89a')) {
-        resolvedUrl = 'https://portal-account-update-verification.com/login?token=9482';
-      } else if (content.includes('bit.ly') || content.includes('tinyurl')) {
-        resolvedUrl = content.replace(/bit\.ly|tinyurl\.com/, 'unshortened-dest-target.org');
-      }
-
+      // Render initial loading tracer state
       redirectChain.innerHTML = `
         <div class="tracer-step">
           <span class="step-num">STEP 1</span>
@@ -870,12 +863,62 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="step-arrow">➔</span>
         </div>
         <div class="tracer-step">
+          <span class="step-num final">UNSHORTENING VIA BACKEND...</span>
+          <span class="step-url" style="color:#c084fc;">Contacting Node.js Security API...</span>
+        </div>
+      `;
+
+      // Query Node.js Express backend server API
+      fetch('http://localhost:5000/api/unshorten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: content })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.redirectChain && data.redirectChain.length > 0) {
+          const chainHTML = data.redirectChain.map((step, idx) => {
+            const isLast = idx === data.redirectChain.length - 1;
+            return `
+              <div class="tracer-step">
+                <span class="step-num ${isLast ? 'final' : ''}">${isLast ? 'FINAL DESTINATION' : 'STEP ' + step.step}</span>
+                <span class="step-url" ${isLast ? 'style="color:#f87171; font-weight:700;"' : ''}>${escapeHtml(step.url)}</span>
+                ${!isLast ? '<span class="step-arrow">➔</span>' : ''}
+              </div>
+            `;
+          }).join('');
+          redirectChain.innerHTML = chainHTML;
+        } else {
+          fallbackLocalUnshorten(content);
+        }
+      })
+      .catch(() => {
+        fallbackLocalUnshorten(content);
+      });
+
+    } else {
+      redirectTracerBox.classList.add('hidden');
+    }
+
+    function fallbackLocalUnshorten(origContent) {
+      let resolvedUrl = origContent;
+      if (origContent.includes('bit.ly/3x89a')) {
+        resolvedUrl = 'https://portal-account-update-verification.com/login?token=9482';
+      } else if (origContent.includes('bit.ly') || origContent.includes('tinyurl')) {
+        resolvedUrl = origContent.replace(/bit\.ly|tinyurl\.com/, 'unshortened-dest-target.org');
+      }
+
+      redirectChain.innerHTML = `
+        <div class="tracer-step">
+          <span class="step-num">STEP 1</span>
+          <span class="step-url">${escapeHtml(origContent)}</span>
+          <span class="step-arrow">➔</span>
+        </div>
+        <div class="tracer-step">
           <span class="step-num final">FINAL DESTINATION</span>
           <span class="step-url" style="color:#f87171; font-weight:700;">${escapeHtml(resolvedUrl)}</span>
         </div>
       `;
-    } else {
-      redirectTracerBox.classList.add('hidden');
     }
 
     // Render AI Analysis Breakdown
