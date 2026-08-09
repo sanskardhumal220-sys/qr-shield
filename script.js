@@ -50,8 +50,110 @@ document.addEventListener('DOMContentLoaded', () => {
   // Scan History Array from localStorage
   let scanHistory = JSON.parse(localStorage.getItem('qr_shield_history') || '[]');
 
+  const cameraBtn = document.getElementById('cameraBtn');
+  const cameraContainer = document.getElementById('cameraContainer');
+  const cameraVideo = document.getElementById('cameraVideo');
+  const stopCameraBtn = document.getElementById('stopCameraBtn');
+
+  const sandboxBtn = document.getElementById('sandboxBtn');
+  const sandboxModal = document.getElementById('sandboxModal');
+  const sandboxFrame = document.getElementById('sandboxFrame');
+  const sandboxUrlDisplay = document.getElementById('sandboxUrlDisplay');
+  const closeSandboxBtn = document.getElementById('closeSandboxBtn');
+
+  let cameraStream = null;
+  let cameraAnimFrame = null;
+
   // Initialize UI
   renderHistory();
+
+  // --- Camera Scanner Logic ---
+  cameraBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startCameraScan();
+  });
+
+  stopCameraBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    stopCameraScan();
+  });
+
+  function startCameraScan() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError('Camera access is not supported in this browser.');
+      return;
+    }
+
+    dropZoneContent.classList.add('hidden');
+    cameraContainer.classList.remove('hidden');
+    hideError();
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then((stream) => {
+        cameraStream = stream;
+        cameraVideo.srcObject = stream;
+        cameraVideo.setAttribute('playsinline', true);
+        cameraVideo.play();
+        cameraAnimFrame = requestAnimationFrame(scanCameraFrame);
+      })
+      .catch((err) => {
+        stopCameraScan();
+        showError('Unable to access camera: ' + (err.message || 'Permission denied'));
+      });
+  }
+
+  function stopCameraScan() {
+    if (cameraAnimFrame) {
+      cancelAnimationFrame(cameraAnimFrame);
+      cameraAnimFrame = null;
+    }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      cameraStream = null;
+    }
+    cameraContainer.classList.add('hidden');
+    dropZoneContent.classList.remove('hidden');
+  }
+
+  function scanCameraFrame() {
+    if (cameraVideo.readyState === cameraVideo.HAVE_ENOUGH_DATA) {
+      canvas.width = cameraVideo.videoWidth;
+      canvas.height = cameraVideo.videoHeight;
+      ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      
+      if (window.jsQR) {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+        if (code && code.data) {
+          const snapshotUrl = canvas.toDataURL('image/png');
+          stopCameraScan();
+          processQRImageSrc(snapshotUrl, code.data);
+          return;
+        }
+      }
+    }
+    cameraAnimFrame = requestAnimationFrame(scanCameraFrame);
+  }
+
+  // --- Safe Sandbox Modal Logic ---
+  sandboxBtn.addEventListener('click', () => {
+    const url = openLinkBtn.href;
+    if (url) {
+      sandboxUrlDisplay.textContent = url;
+      sandboxFrame.src = url;
+      sandboxModal.classList.remove('hidden');
+    }
+  });
+
+  closeSandboxBtn.addEventListener('click', closeSandboxModal);
+  sandboxModal.addEventListener('click', (e) => {
+    if (e.target === sandboxModal) closeSandboxModal();
+  });
+
+  function closeSandboxModal() {
+    sandboxModal.classList.add('hidden');
+    sandboxFrame.src = 'about:blank';
+  }
 
   // --- Event Listeners ---
 
@@ -523,6 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (analysis.isUrl) {
       openLinkBtn.classList.remove('hidden');
+      sandboxBtn.classList.remove('hidden');
       openLinkBtn.href = content;
       // Add safety warning if link is suspicious or dangerous
       if (analysis.riskLevel !== 'Safe') {
@@ -536,6 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else {
       openLinkBtn.classList.add('hidden');
+      sandboxBtn.classList.add('hidden');
     }
 
     // Update Metrics Grid
