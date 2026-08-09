@@ -1,11 +1,12 @@
-"""
-Flask Backend Microservice API for QR Shield Machine Learning URL Classifier (13 Features)
-"""
-
 import pickle
 import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import os
+import sys
+
+# Add parent directory to path to import generate_dataset
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from generate_dataset import extract_advanced_13_features
 
 app = Flask(__name__)
@@ -13,8 +14,9 @@ CORS(app)
 
 # Load trained 13-feature Random Forest model
 MODEL = None
+model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'model.pkl')
 try:
-    with open('model.pkl', 'rb') as f:
+    with open(model_path, 'rb') as f:
         MODEL = pickle.load(f)
     print("[SUCCESS] Flask ML Microservice loaded 13-feature model.pkl!")
 except Exception as e:
@@ -26,16 +28,7 @@ FEATURE_COLS = [
     'tld_risk_score', 'domain_length', 'is_shortened', 'is_whitelisted'
 ]
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({
-        "status": "healthy",
-        "service": "QR Shield Flask ML Microservice",
-        "model_loaded": MODEL is not None,
-        "feature_count": 13
-    })
-
-@app.route('/predict', methods=['POST'])
+@app.route('/api/predict', methods=['POST'])
 def predict():
     data = request.get_json() or {}
     url = data.get('url', '').strip()
@@ -62,6 +55,3 @@ def predict():
         "confidence": confidence,
         "features": feats
     })
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)

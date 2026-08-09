@@ -98,6 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentAnalysisResult = null;
   let activeBrandColor = '#6366f1';
 
+  // Worker Initialization
+  const qrWorker = new Worker('qr-worker.js');
+  let isWorkerBusy = false;
+
   // --- Web Audio API Scan Audio Synthesizer ---
   function playScanBeep(isSuccess = true) {
     try {
@@ -248,25 +252,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    let code = jsQR(imageData.data, imageData.width, imageData.height);
-
-    if (!code) {
-      // Invert color pass for dark-mode QRs
-      for (let i = 0; i < imageData.data.length; i += 4) {
-        imageData.data[i] = 255 - imageData.data[i];
-        imageData.data[i + 1] = 255 - imageData.data[i + 1];
-        imageData.data[i + 2] = 255 - imageData.data[i + 2];
+    
+    qrWorker.onmessage = (e) => {
+      isWorkerBusy = false;
+      const { success, payload } = e.data;
+      if (success) {
+        playScanBeep(true);
+        handleScan(payload);
+      } else {
+        playScanBeep(false);
+        alert('⚠️ No QR code could be detected in this image. Please try another high-contrast image.');
       }
-      code = jsQR(imageData.data, imageData.width, imageData.height);
-    }
-
-    if (code && code.data) {
-      playScanBeep(true);
-      handleScan(code.data);
-    } else {
-      playScanBeep(false);
-      alert('⚠️ No QR code could be detected in this image. Please try another high-contrast image.');
-    }
+    };
+    
+    isWorkerBusy = true;
+    qrWorker.postMessage({ data: imageData.data, width: imageData.width, height: imageData.height });
   }
 
   // --- Live Camera Scanner ---
@@ -303,21 +303,31 @@ document.addEventListener('DOMContentLoaded', () => {
   function scanCameraFrame() {
     if (!isCameraScanning) return;
 
-    if (cameraVideo.readyState === cameraVideo.HAVE_ENOUGH_DATA) {
+    if (cameraVideo.readyState === cameraVideo.HAVE_ENOUGH_DATA && !isWorkerBusy) {
       const ctx = cameraCanvas.getContext('2d', { willReadFrequently: true });
       cameraCanvas.width = cameraVideo.videoWidth;
       cameraCanvas.height = cameraVideo.videoHeight;
       ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
 
       const imageData = ctx.getImageData(0, 0, cameraCanvas.width, cameraCanvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
+      
+      qrWorker.onmessage = (e) => {
+        isWorkerBusy = false;
+        if (!isCameraScanning) return;
+        
+        const { success, payload } = e.data;
+        if (success) {
+          stopCamera();
+          playScanBeep(true);
+          handleScan(payload);
+        } else {
+          requestAnimationFrame(scanCameraFrame);
+        }
+      };
 
-      if (code && code.data) {
-        stopCamera();
-        playScanBeep(true);
-        handleScan(code.data);
-        return;
-      }
+      isWorkerBusy = true;
+      qrWorker.postMessage({ data: imageData.data, width: imageData.width, height: imageData.height });
+      return;
     }
     requestAnimationFrame(scanCameraFrame);
   }
@@ -547,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentAnalysisResult = ruleResult;
 
     // 1. Render Hero Result Card
-    renderResultsDashboard(payload, ruleResult, finalDecision);
+    renderResultsDashboard(payload, ruleResult, finalDecision, mlResult);
 
     // 2. Render ML Model Card
     renderMLModelCard(payload, mlResult, ruleResult);
@@ -556,22 +566,12 @@ document.addEventListener('DOMContentLoaded', () => {
     renderHybridDecisionCard(finalDecision);
   }
 
-  function renderAiNarrative(content, analysis) {
+  async function renderAiNarrative(content, analysis, finalDecision, mlResult) {
     const aiCard = document.getElementById('aiCard');
     const aiNarrative = document.getElementById('aiNarrative');
     const vectorsList = document.getElementById('vectorsList');
 
     if (aiCard) aiCard.classList.remove('placeholder-state');
-
-    if (aiNarrative) {
-      if (analysis.riskLevel === 'Safe') {
-        aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
-      } else if (analysis.riskLevel === 'Suspicious') {
-        aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
-      } else {
-        aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';
-      }
-    }
 
     if (vectorsList) {
       if (analysis.vectors && analysis.vectors.length > 0) {
@@ -588,10 +588,58 @@ document.addEventListener('DOMContentLoaded', () => {
         vectorsList.classList.add('hidden');
       }
     }
+
+    if (!aiNarrative) return;
+
+    const apiKey = localStorage.getItem('qr_shield_gemini_key') || (geminiApiKeyInput ? geminiApiKeyInput.value.trim() : '');
+    
+    if (apiKey) {
+      aiNarrative.textContent = '🔄 Generating dynamic AI threat analysis using Gemini...';
+      try {
+        const promptText = `
+          Analyze this QR code payload for quishing (QR phishing) threats.
+          Payload: ${content}
+          Rule Engine Risk Level: ${analysis.riskLevel}
+          Rule Engine Risk Score: ${analysis.riskScore}/100
+          ML Model Prediction: ${mlResult ? mlResult.prediction : 'Unknown'}
+          ML Model Confidence: ${mlResult ? mlResult.confidence : 'Unknown'}%
+          Final Decision Engine Verdict: ${finalDecision ? finalDecision.finalVerdict : 'Unknown'}
+          
+          Provide a concise (2-3 sentences), highly actionable security narrative. 
+          Use security analyst tone. Do not use markdown formatting.
+        `;
+        
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }]
+          })
+        });
+        
+        if (!res.ok) throw new Error('Gemini API Error');
+        const data = await res.json();
+        const text = data.candidates[0].content.parts[0].text;
+        
+        aiNarrative.textContent = text;
+        return;
+      } catch (err) {
+        console.warn('Gemini API Failed, falling back to static narrative', err);
+      }
+    }
+
+    // Fallback static narrative
+    if (analysis.riskLevel === 'Safe') {
+      aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
+    } else if (analysis.riskLevel === 'Suspicious') {
+      aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
+    } else {
+      aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';
+    }
   }
 
   // --- Render Dashboard UI ---
-  function renderResultsDashboard(content, analysis, finalDecision) {
+  function renderResultsDashboard(content, analysis, finalDecision, mlResult) {
     resultPlaceholder.classList.add('hidden');
     resultContent.classList.remove('hidden');
     resultCard.classList.remove('placeholder-state');
@@ -686,7 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // AI Narrative
-    renderAiNarrative(content, analysis);
+    renderAiNarrative(content, analysis, finalDecision, mlResult);
   }
 
   function renderMLModelCard(content, mlResult, ruleAnalysis) {
