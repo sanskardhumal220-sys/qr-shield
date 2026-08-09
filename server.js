@@ -227,10 +227,15 @@ const handlePredict = async (req, res) => {
 app.post('/api/predict', handlePredict);
 app.post('/api/predict-ml', handlePredict);
 
-// Start Express Server
-app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`🛡️  QR Shield Backend Intelligence Engine Listening`);
-  console.log(`📡 URL: http://localhost:${PORT}`);
-  console.log(`====================================================`);
-});
+// Export Express app handler for Vercel Serverless Functions
+module.exports = app;
+
+// Start Express TCP server only when running directly locally (node server.js)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`====================================================`);
+    console.log(`🛡️  QR Shield Backend Intelligence Engine Listening`);
+    console.log(`📡 URL: http://localhost:${PORT}`);
+    console.log(`====================================================`);
+  });
+}
