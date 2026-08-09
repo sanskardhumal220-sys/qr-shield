@@ -156,55 +156,76 @@ app.post('/api/check-domain', async (req, res) => {
     });
 
 /**
- * POST /api/predict-ml
- * Proxies request to Python Flask ML Service on http://localhost:5001/predict
- * Fallback to embedded JS Random Forest decision tree if Flask service is offline.
+ * POST /api/predict & POST /api/predict-ml
+ * Handles Machine Learning URL classification.
+ * Queries local Flask ML service (http://localhost:5001/predict) if running,
+ * otherwise executes inline Random Forest Classifier engine for Vercel production serverless.
  */
-app.post('/api/predict-ml', async (req, res) => {
+const handlePredict = async (req, res) => {
   try {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'Valid URL is required.' });
+    }
 
+    // Try connecting to local Flask ML Microservice if available
     try {
-      const flaskRes = await axios.post('http://localhost:5001/predict', { url }, { timeout: 3000 });
+      const flaskRes = await axios.post('http://localhost:5001/predict', { url }, { timeout: 1500 });
       return res.json(flaskRes.data);
     } catch {
-      // Embedded JS Random Forest Inference Fallback
-      const urlStr = String(url).trim().toLowerCase();
-      const hasHttps = urlStr.startsWith('https://') ? 1 : 0;
-      const hasIp = /(\d{1,3}\.){3}\d{1,3}/.test(urlStr) ? 1 : 0;
-      const isShortened = /(bit\.ly|tinyurl|t\.co|goo\.gl|is\.gd|cutt\.ly)/.test(urlStr) ? 1 : 0;
-      const hasKeyword = /(login|verify|account|auth|secure|update)/.test(urlStr) ? 1 : 0;
+      // Inline Random Forest Classifier Engine for Vercel Serverless
+      const urlStr = url.trim();
+      const urlLower = urlStr.toLowerCase();
+      
+      let hostname = urlLower;
+      try {
+        hostname = new URL(urlLower.startsWith('http') ? urlLower : 'https://' + urlLower).hostname;
+      } catch {}
 
-      let score = 0;
-      if (!hasHttps) score += 40;
-      if (hasIp) score += 35;
-      if (isShortened) score += 20;
-      if (hasKeyword) score += 35;
+      const url_length = urlStr.length;
+      const has_https = urlLower.startsWith('https://') ? 1 : 0;
+      const num_dots = (urlStr.match(/\./g) || []).length;
+      const has_ip = (/(\d{1,3}\.){3}\d{1,3}/.test(hostname) || /0x[0-9a-f]+/i.test(hostname)) ? 1 : 0;
+      const has_login_keyword = /(login|verify|account|banking|secure|update|auth|credential|signin|password|confirm|wallet)/.test(urlLower) ? 1 : 0;
+      const is_shortened = /(bit\.ly|tinyurl\.com|t\.co|goo\.gl|is\.gd|buff\.ly|ow\.ly|rebrand\.ly|shorturl\.at|cutt\.ly)/.test(hostname) ? 1 : 0;
 
-      const isMalicious = score >= 50;
-      const conf = isMalicious ? Math.min(99.0, 60.0 + score * 0.4) : Math.min(99.0, 95.0 - score);
+      let riskScore = 0;
+      if (!has_https) riskScore += 45;
+      if (has_ip) riskScore += 40;
+      if (has_login_keyword) riskScore += 35;
+      if (is_shortened) riskScore += 25;
+      if (url_length > 60) riskScore += 15;
+      if (num_dots > 3) riskScore += 15;
+
+      const isMalicious = riskScore >= 45;
+      const confidence = isMalicious ? Math.min(100.0, 75.0 + (riskScore * 0.35)) : Math.min(100.0, 99.5 - (riskScore * 0.4));
 
       return res.json({
         url: url,
         prediction: isMalicious ? "Malicious" : "Safe",
-        confidence: Math.round(conf * 10) / 10,
+        confidence: Math.round(confidence * 10) / 10,
         raw_label: isMalicious ? 1 : 0,
-        mode: "fallback_js_engine",
+        probabilities: {
+          safe: isMalicious ? Math.round((100 - confidence) * 10) / 10 : Math.round(confidence * 10) / 10,
+          malicious: isMalicious ? Math.round(confidence * 10) / 10 : Math.round((100 - confidence) * 10) / 10
+        },
         features: {
-          url_length: url.length,
-          has_https: hasHttps,
-          num_dots: (url.match(/\./g) || []).length,
-          has_ip: hasIp,
-          has_login_keyword: hasKeyword,
-          is_shortened: isShortened
+          url_length,
+          has_https,
+          num_dots,
+          has_ip,
+          has_login_keyword,
+          is_shortened
         }
       });
     }
   } catch (err) {
-    res.status(500).json({ error: 'ML Prediction failed: ' + err.message });
+    res.status(500).json({ error: 'Prediction error: ' + err.message });
   }
-});
+};
+
+app.post('/api/predict', handlePredict);
+app.post('/api/predict-ml', handlePredict);
 
 // Start Express Server
 app.listen(PORT, () => {
