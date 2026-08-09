@@ -155,6 +155,72 @@ document.addEventListener('DOMContentLoaded', () => {
     sandboxFrame.src = 'about:blank';
   }
 
+  // --- PDF Security Audit Export ---
+  const exportPdfBtn = document.getElementById('exportPdfBtn');
+  exportPdfBtn.addEventListener('click', () => {
+    window.print();
+  });
+
+  // --- CSV Scan History Export ---
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
+  exportCsvBtn.addEventListener('click', () => {
+    if (scanHistory.length === 0) {
+      alert('No scan history available to export.');
+      return;
+    }
+
+    let csvContent = 'data:text/csv;charset=utf-8,ID,Date,Time,Content,Risk Level,Risk Score (%)\n';
+    scanHistory.forEach(item => {
+      const cleanContent = `"${item.fullContent.replace(/"/g, '""')}"`;
+      csvContent += `${item.id},${item.date},${item.timestamp},${cleanContent},${item.riskLevel},${item.riskScore}\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `qr_shield_scan_history_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  // --- Settings Modal Logic ---
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  const strictnessModeSelect = document.getElementById('strictnessModeSelect');
+  const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
+  const autoUnshortenCheck = document.getElementById('autoUnshortenCheck');
+
+  // Load saved settings
+  const appSettings = JSON.parse(localStorage.getItem('qr_shield_settings') || '{"strictness":"standard","geminiKey":"","autoUnshorten":true}');
+  strictnessModeSelect.value = appSettings.strictness || 'standard';
+  geminiApiKeyInput.value = appSettings.geminiKey || '';
+  autoUnshortenCheck.checked = appSettings.autoUnshorten !== false;
+
+  settingsBtn.addEventListener('click', () => {
+    settingsModal.classList.remove('hidden');
+  });
+
+  closeSettingsBtn.addEventListener('click', () => {
+    settingsModal.classList.add('hidden');
+  });
+
+  saveSettingsBtn.addEventListener('click', () => {
+    const updatedSettings = {
+      strictness: strictnessModeSelect.value,
+      geminiKey: geminiApiKeyInput.value.trim(),
+      autoUnshorten: autoUnshortenCheck.checked
+    };
+    localStorage.setItem('qr_shield_settings', JSON.stringify(updatedSettings));
+    settingsModal.classList.add('hidden');
+
+    const origText = settingsBtn.innerHTML;
+    settingsBtn.innerHTML = '✓ Saved';
+    setTimeout(() => settingsBtn.innerHTML = origText, 2000);
+  });
+
   // --- Event Listeners ---
 
   // Browse File Button Click
