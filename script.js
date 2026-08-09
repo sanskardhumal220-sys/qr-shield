@@ -384,8 +384,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function evaluateHybridDecision(mlResult, ruleResult) {
     const mlPred = mlResult.prediction;
     const mlConf = mlResult.confidence;
-    const ruleRiskScore = ruleResult.riskScore;
+    let ruleRiskScore = ruleResult.riskScore;
     const isWhitelisted = mlResult.features ? (mlResult.features.is_whitelisted === 1) : false;
+
+    // Apply risk scoring fix (Unverified domain)
+    if (!isWhitelisted) ruleRiskScore += 20;
 
     const isMlSafe = mlPred === "Safe";
     const isMlMalicious = mlPred === "Malicious";
@@ -414,10 +417,25 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (finalVerdict === "SAFE") finalVerdict = "SUSPICIOUS";
     }
 
+    // 3. ZERO-TRUST SAFE CLASSIFICATION RULE (STRICT)
+    let securityRisks = [];
+    if (ruleResult.sslStatus.includes("Unencrypted")) securityRisks.push("Unencrypted HTTP");
+    if (!isWhitelisted) securityRisks.push("Unknown domain trust");
+    if (ruleResult.shortenerStatus.includes("Shortened")) securityRisks.push("Shortened URL");
+    if (ruleResult.domainIntegrity.includes("IP Address")) securityRisks.push("IP-based URL");
+    if (ruleResult.contentType && ruleResult.contentType.includes("Dynamic Script")) securityRisks.push("Dynamic endpoint");
+    if (ruleResult.vectors.some(v => v.title.includes("Keyword"))) securityRisks.push("Suspicious keywords");
+
+    // Enforce STRICT SAFE requirements
+    if (finalVerdict === "SAFE") {
+        if (securityRisks.length > 0 || mlConf <= 80) {
+            finalVerdict = "SUSPICIOUS"; // Hybrid Override: ML Safe but risks exist -> Downgrade
+        }
+    }
+
     // 4. DOMAIN TRUST CHECK
-    if (isWhitelisted && finalVerdict !== "SAFE") {
+    if (isWhitelisted && finalVerdict !== "SAFE" && finalVerdict !== "SUSPICIOUS") {
         if (finalVerdict === "DANGEROUS") finalVerdict = "MEDIUM RISK";
-        else finalVerdict = "SAFE";
     }
 
     // 5. GOOGLE SAFE BROWSING INTEGRATION
@@ -428,19 +446,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 5. UI FIX & EXPLAINABLE OUTPUT (Dynamic Reason)
     let decisionReasonArr = [];
-    if (ruleResult.shortenerStatus.includes("Shortened")) {
-        decisionReasonArr.push("Shortened URL — destination unknown");
-    }
-    if (mlConf < 60) {
-        decisionReasonArr.push(`Low ML confidence (${mlConf}%) — requires caution`);
+    
+    if (finalVerdict === "SAFE") {
+        decisionReasonArr.push(`ML prediction Safe (${mlConf}%) - Zero risk factors detected`);
+    } else if (isMlSafe && securityRisks.length > 0) {
+        decisionReasonArr.push(`No ML threat detected, but security risks present (${securityRisks.join(", ")})`);
     } else {
-        decisionReasonArr.push(`${mlPred} ML prediction (${mlConf}%)`);
-    }
-    if (engineAgreement === "Discrepancy") {
-        decisionReasonArr.push("Engine disagreement (Rule vs ML)");
-    }
-    if (isWhitelisted) {
-        decisionReasonArr.push("Trusted domain verified");
+        if (securityRisks.includes("Shortened URL")) decisionReasonArr.push("Shortened URL — destination unknown");
+        if (mlConf < 60) decisionReasonArr.push(`Low ML confidence (${mlConf}%) — requires caution`);
+        else decisionReasonArr.push(`${mlPred} ML prediction (${mlConf}%)`);
+        
+        if (engineAgreement === "Discrepancy") decisionReasonArr.push("Engine disagreement (Rule vs ML)");
+        if (isWhitelisted) decisionReasonArr.push("Trusted domain verified");
     }
 
     if (gsbStatus === "Flagged") {
@@ -567,8 +584,15 @@ document.addEventListener('DOMContentLoaded', () => {
         sslStatus = 'HTTPS (Encrypted)';
       } else if (urlObj.protocol === 'http:') {
         sslStatus = 'HTTP (Unencrypted)';
-        riskScore += 10;
+        riskScore += 25; // HTTP -> +25 risk
         vectors.push({ type: 'warning', title: 'Unencrypted HTTP Protocol', desc: 'Communicates over plain HTTP without SSL encryption.' });
+      }
+
+      // PHP / Suspicious endpoint check
+      if (urlObj.pathname && urlObj.pathname.includes('.php')) {
+        contentType = 'Dynamic Script (.php)';
+        riskScore += 10; // .php endpoint -> +10 risk
+        vectors.push({ type: 'warning', title: 'Suspicious Endpoint (.php)', desc: 'Dynamic PHP script detected in URL target.' });
       }
 
       // Shortener check
@@ -694,7 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fallback static narrative
     const displayLevel = (finalDecision ? finalDecision.finalVerdict : analysis.riskLevel).toUpperCase();
     if (displayLevel === 'SAFE') {
-      aiNarrative.textContent = '🟢 ' + (finalDecision ? finalDecision.decisionReason : 'Payload analysis confirms zero high-risk indicators.');
+      aiNarrative.textContent = '🟢 ' + (finalDecision ? finalDecision.decisionReason : 'Payload analysis confirms zero high-risk indicators. All security checks passed.');
     } else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'MEDIUM RISK') {
       aiNarrative.textContent = '🟡 ' + (finalDecision ? finalDecision.decisionReason : 'Caution Advised: Suspicious redirect shorteners or low confidence vectors detected.');
     } else {
