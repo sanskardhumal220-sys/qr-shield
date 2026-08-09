@@ -6,8 +6,8 @@ Trains a RandomForestClassifier (n_estimators=200, max_depth=10, random_state=42
 import pickle
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV
+from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 def train_and_evaluate():
@@ -37,17 +37,35 @@ def train_and_evaluate():
 
     print(f"[SPLIT] Data Split: {len(X_train)} training samples, {len(X_test)} test samples")
 
-    # 4. Initialize & Train Random Forest Classifier with requested hyper-parameters
-    rf_model = RandomForestClassifier(
-        n_estimators=200,
-        max_depth=10,
+    # 4. Initialize & Train XGBoost Classifier with GridSearchCV
+    xgb_base = XGBClassifier(
         random_state=42,
-        criterion='gini'
+        eval_metric='logloss'
     )
-    rf_model.fit(X_train, y_train)
+    
+    # Define hyperparameter grid to tune and prevent overfitting
+    param_grid = {
+        'max_depth': [3, 5, 7],
+        'learning_rate': [0.01, 0.1, 0.2],
+        'n_estimators': [100, 200]
+    }
+    
+    print("[TRAIN] Starting 5-fold Cross-Validation with GridSearchCV...")
+    grid_search = GridSearchCV(
+        estimator=xgb_base,
+        param_grid=param_grid,
+        cv=5,
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1
+    )
+    grid_search.fit(X_train, y_train)
+    
+    best_xgb_model = grid_search.best_estimator_
+    print(f"[TRAIN] Best Hyperparameters: {grid_search.best_params_}")
 
     # 5. Evaluate Predictions
-    y_pred = rf_model.predict(X_test)
+    y_pred = best_xgb_model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     cm = confusion_matrix(y_test, y_pred)
 
@@ -62,15 +80,15 @@ def train_and_evaluate():
 
     # Feature Importance Breakdown
     print("Feature Importances:")
-    for feature, importance in zip(feature_cols, rf_model.feature_importances_):
+    for feature, importance in zip(feature_cols, best_xgb_model.feature_importances_):
         print(f"   - {feature:22s}: {importance * 100:.2f}%")
 
     # 6. Save Model using pickle as 'model.pkl'
     model_filename = 'model.pkl'
     with open(model_filename, 'wb') as f:
-        pickle.dump(rf_model, f)
+        pickle.dump(best_xgb_model, f)
 
-    print("\n[SUCCESS] Saved retrained 13-Feature Random Forest model to 'model.pkl'!")
+    print("\n[SUCCESS] Saved retrained 13-Feature XGBoost model to 'model.pkl'!")
     return accuracy
 
 if __name__ == '__main__':
