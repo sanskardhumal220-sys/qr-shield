@@ -394,53 +394,60 @@ document.addEventListener('DOMContentLoaded', () => {
     let decisionCase = "";
     let decisionReason = "";
 
-    // CASE 1: IF ML = SAFE AND confidence > 80% AND domain is trusted -> SAFE
-    if (isMlSafe && mlConf >= 80 && isWhitelisted) {
-      finalVerdict = "SAFE";
-      decisionCase = "CASE 1: Trusted Domain & High ML Confidence";
-      decisionReason = "Whitelisted organization domain verified with high Machine Learning confidence score (>= 80%).";
-    }
-    // CASE 2: IF ML = SAFE AND Rule Risk < 50 -> SAFE
-    else if (isMlSafe && ruleRiskScore < 50) {
-      finalVerdict = "SAFE";
-      decisionCase = "CASE 2: Clean ML & Low Rule Risk";
-      decisionReason = "Machine Learning classifier predicts Safe and rule-based threat score is under 50.";
-    }
-    // CASE 3: IF ML = SAFE AND Rule Risk >= 50 -> SUSPICIOUS
-    else if (isMlSafe && ruleRiskScore >= 50) {
-      finalVerdict = "SUSPICIOUS";
-      decisionCase = "CASE 3: ML Safe vs Elevated Rule Risk Conflict";
-      decisionReason = "ML model predicts Safe, but rule engine detected elevated risk factors (>= 50). Resolving to Suspicious for zero-trust protection.";
-    }
-    // CASE 4: IF ML = MALICIOUS AND confidence > 70% -> DANGEROUS
-    else if (isMlMalicious && mlConf >= 70) {
-      finalVerdict = "DANGEROUS";
-      decisionCase = "CASE 4: High Confidence ML Threat Detection";
-      decisionReason = "Machine Learning classifier detected malicious quishing patterns with high confidence (>= 70%).";
-    }
-    // CASE 5: IF Rule Risk > 70 AND ML confidence < 60% -> DANGEROUS
-    else if (ruleRiskScore > 70 && mlConf < 60) {
-      finalVerdict = "DANGEROUS";
-      decisionCase = "CASE 5: High Rule Risk Overrides Uncertain ML Score";
-      decisionReason = "Critical rule-based threat vectors triggered (risk score > 70) overriding low ML confidence (< 60%).";
-    }
-    // CASE 6: IF ML and Rule both agree -> that result
-    else {
-      const ruleIsSafe = ruleRiskScore < 25;
-      finalVerdict = (isMlSafe && ruleIsSafe) ? "SAFE" : "DANGEROUS";
-      decisionCase = "CASE 6: Engine Consensus";
-      decisionReason = "Complete consensus achieved between Rule Engine heuristic analysis and XGBoost ML classifier.";
+    // 1. CONFIDENCE THRESHOLDS & 3. HYBRID DECISION FIX
+    if (isMlSafe) {
+        finalVerdict = "SAFE";
+        decisionCase = "CASE: ML Safe Prediction";
+        decisionReason = "ML model predicts Safe. No malicious patterns detected.";
+    } else {
+        if (mlConf < 60) {
+            finalVerdict = "SUSPICIOUS";
+            decisionCase = "CASE: Low Confidence ML Threat";
+            decisionReason = `Low ML confidence (${mlConf}%). Requires further manual verification.`;
+        } else if (mlConf >= 60 && mlConf <= 85) {
+            finalVerdict = "MEDIUM RISK";
+            decisionCase = "CASE: Medium Confidence ML Threat";
+            decisionReason = `ML model predicts Malicious with medium confidence (${mlConf}%).`;
+        } else {
+            if (ruleRiskScore >= 50) {
+                finalVerdict = "DANGEROUS";
+                decisionCase = "CASE: High Confidence ML Threat & Rule Engine Consensus";
+                decisionReason = `Machine Learning classifier detected malicious quishing patterns with high confidence (${mlConf}%).`;
+            } else {
+                finalVerdict = "SUSPICIOUS";
+                decisionCase = "CASE: ML High Confidence vs Low Rule Risk Conflict";
+                decisionReason = `ML detected threat (${mlConf}%), but rule score is low. Marked as Suspicious.`;
+            }
+        }
     }
 
-    // Build Decision Metric Tags
+    // 4. DOMAIN TRUST CHECK
+    if (isWhitelisted && finalVerdict !== "SAFE") {
+        if (finalVerdict === "DANGEROUS") {
+           finalVerdict = "MEDIUM RISK";
+           decisionReason += " However, the domain is trusted, so risk is reduced.";
+        } else {
+           finalVerdict = "SAFE";
+           decisionReason += " The domain is highly trusted, overriding risk.";
+        }
+    }
+
+    // 6. EXPLAINABLE OUTPUT (Decision Metric Tags)
     const tags = [];
-    if (isWhitelisted) tags.push({ text: "✔ Trusted Domain", type: "tag-trust" });
-    if (ruleRiskScore >= 20) tags.push({ text: "⚠ Rule Triggered", type: "tag-rule" });
-    if (mlConf >= 80) tags.push({ text: "🤖 ML Confidence High", type: "tag-ml" });
+    if (isWhitelisted) {
+       tags.push({ text: "✔ Trusted Domain", type: "tag-trust" });
+    } else {
+       tags.push({ text: "❓ Destination unknown → requires verification", type: "tag-rule" });
+    }
+    
+    if (ruleResult.shortenerStatus.includes("Shortened")) {
+        tags.push({ text: "⚠ Shortened URL detected", type: "tag-rule" });
+    }
 
-    const ruleIsSafe = ruleRiskScore < 25;
-    if ((isMlSafe && ruleIsSafe) || (isMlMalicious && ruleRiskScore >= 60)) {
-      tags.push({ text: "🤝 Consensus Reached", type: "tag-consensus" });
+    if (mlConf < 60) {
+        tags.push({ text: `Low ML confidence (${mlConf}%)`, type: "tag-ml" });
+    } else {
+        tags.push({ text: `🤖 ML Confidence (${mlConf}%)`, type: "tag-ml" });
     }
 
     return { finalVerdict, decisionCase, decisionReason, tags };
@@ -539,7 +546,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Shortener check
       if (shortenerDomains.some(sd => hostname.includes(sd))) {
         shortenerStatus = 'Shortened URL Detected';
-        riskScore += 25;
+        riskScore += 20;
         vectors.push({ type: 'warning', title: 'URL Shortener Obfuscation', desc: 'Uses shortened redirect link to mask actual destination.' });
       }
 
@@ -561,6 +568,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let riskLevel = 'Safe';
     if (riskScore >= 60) riskLevel = 'Dangerous';
     else if (riskScore >= 25) riskLevel = 'Suspicious';
+
+    // REMOVE OVERCONFIDENCE
+    if (riskScore < 5) {
+        riskScore = 5;
+    }
 
     return {
       riskScore: Math.min(100, riskScore),
@@ -669,15 +681,23 @@ document.addEventListener('DOMContentLoaded', () => {
     resultCard.classList.remove('placeholder-state');
 
     const displayLevel = finalDecision ? finalDecision.finalVerdict : analysis.riskLevel;
+    
+    const cssClassMap = {
+       "SAFE": "safe",
+       "SUSPICIOUS": "suspicious",
+       "MEDIUM RISK": "suspicious", // fallback to suspicious styling
+       "DANGEROUS": "dangerous"
+    };
+    const cssClass = cssClassMap[displayLevel.toUpperCase()] || "safe";
 
     // Risk Badge
     riskBadge.textContent = displayLevel.toUpperCase();
-    riskBadge.className = `risk-badge-large ${displayLevel.toLowerCase()}-glow`;
+    riskBadge.className = `risk-badge-large ${cssClass}-glow`;
 
     // Risk Summary
     if (displayLevel === 'SAFE' || displayLevel === 'Safe') {
       riskSummaryText.textContent = 'Payload appears clean with zero detected quishing vectors.';
-    } else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'Suspicious') {
+    } else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'Suspicious' || displayLevel === 'MEDIUM RISK') {
       riskSummaryText.textContent = 'Contains suspicious redirect or auth factors. Exercise caution.';
     } else {
       riskSummaryText.textContent = 'Critical Risk Alert: High-confidence quishing or malicious payload!';
@@ -689,13 +709,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const offset = 283 - (283 * score) / 100;
     riskRingCircle.style.strokeDashoffset = offset;
 
-    if (displayLevel === 'SAFE' || displayLevel === 'Safe') riskRingCircle.style.stroke = '#10b981';
-    else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'Suspicious') riskRingCircle.style.stroke = '#f59e0b';
+    if (cssClass === 'safe') riskRingCircle.style.stroke = '#10b981';
+    else if (cssClass === 'suspicious') riskRingCircle.style.stroke = '#f59e0b';
     else riskRingCircle.style.stroke = '#ef4444';
 
     // Horizontal Progress Bar
     riskMeterFill.style.width = `${score}%`;
-    riskMeterFill.className = `risk-meter-fill ${displayLevel.toLowerCase()}`;
+    riskMeterFill.className = `risk-meter-fill ${cssClass}`;
     riskPercentText.textContent = `${score} / 100 Risk Score`;
 
     // Payload Text
