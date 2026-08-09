@@ -145,8 +145,19 @@ def main():
             # Generate random realistic safe domains not on the whitelist
             domain = f"my-safe-site-{random.randint(1,10000)}.com"
         
-        sub = random.choice(["docs", "support", "blog", "news", "developer", "api", "help", "auth", "login", "portal", "my", "static", "cdn", "v2", "m", ""])
-        path = random.choice(["/index.html", "/article/2026/security", "/user/profile", "/docs/api/v1", "/questions/9842", "/search?q=test", "/login/status", "/verify", "/account/settings", ""])
+        sub = random.choice(["docs", "support", "blog", "news", "developer", "api", "help", "auth", "login", "portal", "my", "static", "cdn", "v2", "m", "www", ""])
+        
+        long_paths = [
+            "/terms/q/quick-response-qr-code.asp",
+            "/wiki/Special:Search?search=machine+learning&go=Go",
+            "/news/technology-2026-08-09-the-future-of-ai-in-cybersecurity-and-threat-detection",
+            "/products/category/electronics/smartphones/iphone-15-pro-max-256gb-titanium",
+            "/support/articles/en-us/how-to-reset-your-account-password-securely-v2",
+            "/blog/engineering/how-we-migrated-from-random-forest-to-xgboost-for-better-accuracy"
+        ]
+        short_paths = ["/index.html", "/article/2026/security", "/user/profile", "/docs/api/v1", "/questions/9842", "/search?q=test", "/login/status", "/verify", "/account/settings", ""]
+        
+        path = random.choice(short_paths + long_paths)
         scheme = random.choice(["https://", "https://", "https://", "http://"])
         
         full_url = f"{scheme}{sub + '.' if sub else ''}{domain}{path}"
