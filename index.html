@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR Shield – AI Quishing Detector</title>
+  <meta name="description" content="Protect yourself from QR code scams with real-time AI quishing analysis and risk detection.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- jsQR Library for QR decoding -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+</head>
+<body>
+
+  <!-- Background decorative glowing elements -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="bg-glow bg-glow-3"></div>
+
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <rect x="8" y="8" width="3" height="3" fill="currentColor"/>
+            <rect x="13" y="8" width="3" height="3" fill="currentColor"/>
+            <rect x="8" y="13" width="3" height="3" fill="currentColor"/>
+            <rect x="13" y="13" width="3" height="3" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="title">QR Shield <span class="badge-ai">AI Detector</span></h1>
+          <p class="tagline">Protect yourself from QR code scams & phishing (quishing)</p>
+        </div>
+      </div>
+      <div class="header-status">
+        <span class="status-indicator online"></span>
+        <span class="status-text">AI Scanner Active</span>
+      </div>
+    </header>
+
+    <!-- Main Grid Layout -->
+    <main class="main-layout">
+
+      <!-- Left Column: Scanner & Presets -->
+      <section class="card scanner-card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+              <rect x="7" y="7" width="10" height="10" rx="1"/>
+            </svg>
+            Scan QR Code
+          </h2>
+          <span class="subtitle">Upload, drag & drop, or select a preset</span>
+        </div>
+
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept="image/*" class="file-input">
+          
+          <div class="drop-zone-content" id="dropZoneContent">
+            <div class="upload-icon-wrapper">
+              <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <p class="drop-title">Drag & drop your QR image here</p>
+            <p class="drop-sub">or <button type="button" class="browse-btn" id="browseBtn">Browse File</button></p>
+            <span class="paste-hint">💡 Tip: You can also paste directly with <kbd>Ctrl+V</kbd> / <kbd>⌘+V</kbd></span>
+          </div>
+
+          <!-- Preview & Scanning Animation (Hidden initially) -->
+          <div class="preview-container hidden" id="previewContainer">
+            <img id="qrPreview" src="" alt="QR Code Preview">
+            <div class="radar-overlay hidden" id="radarOverlay">
+              <div class="radar-line"></div>
+              <div class="radar-grid"></div>
+              <span class="scanning-label">AI Analyzing QR Code...</span>
+            </div>
+            <button type="button" class="change-img-btn" id="changeImgBtn" title="Scan another QR">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+                <path d="M16 21h5v-5"/>
+              </svg>
+              Scan New Image
+            </button>
+          </div>
+        </div>
+
+        <!-- Error Alert Container -->
+        <div class="error-banner hidden" id="errorBanner">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span id="errorMessage">No valid QR code detected in this image. Please try a clearer image.</span>
+        </div>
+
+        <!-- Quick Test Presets Section -->
+        <div class="presets-section">
+          <p class="presets-title">⚡ Quick Test Samples:</p>
+          <div class="preset-buttons">
+            <button type="button" class="preset-btn btn-safe" data-preset="safe">
+              <span class="dot green"></span> Safe URL
+            </button>
+            <button type="button" class="preset-btn btn-suspicious" data-preset="suspicious">
+              <span class="dot yellow"></span> Shortened Link
+            </button>
+            <button type="button" class="preset-btn btn-dangerous" data-preset="dangerous">
+              <span class="dot red"></span> Phishing HTTP
+            </button>
+            <button type="button" class="preset-btn btn-text" data-preset="text">
+              <span class="dot blue"></span> Plain Text
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Results & AI Analysis -->
+      <div class="results-column">
+        
+        <!-- Scan Result Card -->
+        <section class="card result-card placeholder-state" id="resultCard">
+          
+          <!-- Empty State when no QR scanned yet -->
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <circle cx="12" cy="11" r="3"/>
+              </svg>
+            </div>
+            <h3>Awaiting QR Scan</h3>
+            <p>Upload a QR code image or select a test sample to evaluate quishing risk and view AI breakdown.</p>
+          </div>
+
+          <!-- Result Content (Hidden until scanned) -->
+          <div class="result-content hidden" id="resultContent">
+            
+            <!-- Risk Header Badge & Score -->
+            <div class="result-header">
+              <div class="risk-badge-wrapper">
+                <span class="risk-badge" id="riskBadge">
+                  <span class="risk-icon" id="riskIcon"></span>
+                  <span id="riskText">SAFE</span>
+                </span>
+                <span class="confidence-tag">AI Confidence: 99.4%</span>
+              </div>
+
+              <!-- Animated Risk Meter Bar -->
+              <div class="meter-wrapper">
+                <div class="meter-header">
+                  <span class="meter-label">Threat Risk Level</span>
+                  <span class="meter-score" id="meterScore">0%</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-fill" id="meterFill"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Extracted Payload Display -->
+            <div class="payload-box">
+              <div class="payload-header">
+                <span class="payload-title">Extracted QR Content:</span>
+                <div class="payload-actions">
+                  <button type="button" class="icon-btn" id="copyBtn" title="Copy to clipboard">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    Copy
+                  </button>
+                  <a href="#" target="_blank" rel="noopener noreferrer" class="icon-btn primary-link hidden" id="openLinkBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                    Open Link
+                  </a>
+                </div>
+              </div>
+              <div class="payload-text" id="payloadText">https://example.com</div>
+            </div>
+
+            <!-- Threat Metrics Grid -->
+            <div class="threat-metrics-grid" id="threatMetrics">
+              <div class="metric-chip" id="metricSsl">
+                <span class="metric-icon">🔒</span>
+                <div class="metric-info">
+                  <span class="metric-label">Encryption</span>
+                  <span class="metric-value">HTTPS (Secure)</span>
+                </div>
+              </div>
+              <div class="metric-chip" id="metricShortener">
+                <span class="metric-icon">🔗</span>
+                <div class="metric-info">
+                  <span class="metric-label">Shortener Check</span>
+                  <span class="metric-value">Direct Link</span>
+                </div>
+              </div>
+              <div class="metric-chip" id="metricDomain">
+                <span class="metric-icon">🌐</span>
+                <div class="metric-info">
+                  <span class="metric-label">Domain Integrity</span>
+                  <span class="metric-value">High Reputation</span>
+                </div>
+              </div>
+              <div class="metric-chip" id="metricPayload">
+                <span class="metric-icon">📄</span>
+                <div class="metric-info">
+                  <span class="metric-label">Content Type</span>
+                  <span class="metric-value">Standard Web URL</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- AI Security Analysis Section -->
+        <section class="card ai-card placeholder-state" id="aiCard">
+          <div class="card-header">
+            <h2 class="card-title">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+                <path d="M12 6v6l4 2"/>
+              </svg>
+              AI Security Analysis
+            </h2>
+            <span class="ai-badge-sub">Automated Risk Reasoning</span>
+          </div>
+
+          <div class="ai-body" id="aiBody">
+            <p class="ai-placeholder">Scan a QR code to generate a detailed security breakdown and actionable advice.</p>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Scan History Section -->
+    <section class="card history-card">
+      <div class="history-header">
+        <div class="history-title-group">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <h2 class="card-title">Scan History</h2>
+          <span class="history-count" id="historyCount">0 scans</span>
+        </div>
+        <button type="button" class="clear-history-btn" id="clearHistoryBtn">Clear History</button>
+      </div>
+
+      <div class="history-list" id="historyList">
+        <div class="no-history">No recent scans recorded. Scans will be automatically saved locally.</div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>🛡️ <strong>QR Shield</strong> — Protecting users from Quishing scams. Built with vanilla JS, CSS3 glassmorphism & jsQR.</p>
+      <p class="footer-sub">Privacy Note: All QR code scanning and security checks happen 100% locally in your browser. No files are uploaded to external servers.</p>
+    </footer>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
