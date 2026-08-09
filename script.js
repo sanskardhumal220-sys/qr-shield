@@ -663,6 +663,27 @@ document.addEventListener('DOMContentLoaded', () => {
       if (hybridTagsList) {
         hybridTagsList.innerHTML = hybrid.tags.map(t => `<span class="hybrid-tag ${t.type}">${escapeHtml(t.text)}</span>`).join('');
       }
+
+      // Synchronize Top Hero Status Badge & Risk Meter with Hybrid Verdict
+      if (hybrid.finalVerdict === 'SAFE') {
+        riskBadge.textContent = 'SAFE';
+        riskBadge.className = 'risk-badge-large safe-glow';
+        riskSummaryText.textContent = 'Hybrid AI Fusion confirms payload is clean with zero quishing vectors.';
+        riskRingCircle.style.stroke = '#10b981';
+        riskMeterFill.className = 'risk-meter-fill safe';
+      } else if (hybrid.finalVerdict === 'SUSPICIOUS') {
+        riskBadge.textContent = 'SUSPICIOUS';
+        riskBadge.className = 'risk-badge-large suspicious-glow';
+        riskSummaryText.textContent = 'Caution Advised: Hybrid AI Fusion detected elevated risk factors.';
+        riskRingCircle.style.stroke = '#f59e0b';
+        riskMeterFill.className = 'risk-meter-fill suspicious';
+      } else {
+        riskBadge.textContent = 'DANGEROUS';
+        riskBadge.className = 'risk-badge-large dangerous-glow';
+        riskSummaryText.textContent = 'Critical Risk Alert: High-confidence quishing threat detected!';
+        riskRingCircle.style.stroke = '#ef4444';
+        riskMeterFill.className = 'risk-meter-fill dangerous';
+      }
     })
     .catch(() => {});
   }

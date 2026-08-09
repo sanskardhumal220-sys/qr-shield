@@ -48,6 +48,15 @@ app.post('/api/unshorten', async (req, res) => {
       targetUrl = 'https://' + targetUrl;
     }
 
+    // SSRF Protection: Prevent unshortening internal/private IP ranges
+    try {
+      const hostname = new URL(targetUrl).hostname;
+      const privateIpRegex = /^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|169\.254\.|localhost|0\.0\.0\.0)/i;
+      if (privateIpRegex.test(hostname)) {
+        return res.status(400).json({ error: 'SSRF Security Protection: Scanning internal private IP networks is restricted.' });
+      }
+    } catch {}
+
     const redirectChain = [];
     let currentUrl = targetUrl;
     let stepCount = 1;
