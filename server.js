@@ -7,14 +7,25 @@ const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 const dns = require('dns').promises;
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Rate Limiter: Max 100 requests per 15 minutes per IP
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many API requests from this IP. Please try again after 15 minutes.' }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api/', apiLimiter);
 
 // Serve static frontend files from current directory
 app.use(express.static(__dirname));
@@ -219,8 +230,12 @@ const handlePredict = async (req, res) => {
         const has_https = lower.startsWith('https://') ? 1 : 0;
         const has_ip = (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(hostname) || /0x[0-9a-f]+/i.test(hostname)) ? 1 : 0;
 
+        const twoPartTlds = ['.co.uk', '.gov.uk', '.edu.uk', '.org.uk', '.com.au', '.edu.au', '.gov.au', '.co.in', '.gov.in', '.edu.in', '.co.jp'];
+        const hasTwoPart = twoPartTlds.some(tld => hostname.endsWith(tld));
+
         const domainParts = hostname.split('.');
-        const num_subdomains = domainParts.length >= 2 ? Math.max(0, domainParts.length - 2) : 0;
+        const partsCount = domainParts.length;
+        const num_subdomains = hasTwoPart ? Math.max(0, partsCount - 3) : (partsCount >= 2 ? Math.max(0, partsCount - 2) : 0);
 
         const has_at_symbol = urlStr.includes('@') ? 1 : 0;
         const has_hyphen_in_domain = hostname.includes('-') ? 1 : 0;

@@ -90,9 +90,17 @@ def extract_advanced_13_features(url):
     has_https = 1 if url_lower.startswith('https://') or (parsed.scheme == 'https') else 0
     has_ip = 1 if re.search(r'(\d{1,3}\.){3}\d{1,3}', hostname) or re.search(r'0x[0-9a-f]+', hostname) else 0
     
-    # Subdomain count
+    # Multi-part TLDs (e.g. .co.uk, .gov.uk, .edu.au, .co.in, .org.uk)
+    two_part_tlds = ['.co.uk', '.gov.uk', '.edu.uk', '.org.uk', '.com.au', '.edu.au', '.gov.au', '.co.in', '.gov.in', '.edu.in', '.co.jp']
+    has_two_part = any(hostname.endswith(tld) for tld in two_part_tlds)
+
+    # Subdomain count calculation with multi-part TLD awareness
     domain_parts = hostname.split('.')
-    num_subdomains = max(0, len(domain_parts) - 2) if len(domain_parts) >= 2 else 0
+    parts_count = len(domain_parts)
+    if has_two_part:
+        num_subdomains = max(0, parts_count - 3)
+    else:
+        num_subdomains = max(0, parts_count - 2) if parts_count >= 2 else 0
 
     has_at_symbol = 1 if '@' in url_str else 0
     has_hyphen_in_domain = 1 if '-' in hostname else 0
