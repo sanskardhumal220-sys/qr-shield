@@ -447,6 +447,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --- Step 1-4 & 5: Main Sequential Async Scan Handler ---
+  const PREDICTION_CACHE = new Map();
+
   async function handleScan(payload) {
     // Step 1: Input Validation & Extraction
     if (!payload || typeof payload !== 'string' || payload.trim() === '') {
@@ -454,7 +456,25 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const cleanPayload = payload.trim();
+    let cleanPayload = payload.trim();
+    
+    // Normalize payload to ensure cache consistency
+    try {
+      cleanPayload = decodeURIComponent(cleanPayload);
+    } catch(e) {}
+    if (cleanPayload.endsWith('/')) {
+        cleanPayload = cleanPayload.slice(0, -1);
+    }
+    cleanPayload = cleanPayload.toLowerCase();
+
+    if (PREDICTION_CACHE.has(cleanPayload)) {
+      console.log("[CACHE HIT] Returning cached prediction for:", cleanPayload);
+      const cached = PREDICTION_CACHE.get(cleanPayload);
+      updateUI({ payload: payload.trim(), mlResult: cached.mlResult, ruleResult: cached.ruleResult, finalDecision: cached.finalDecision });
+      saveScanToHistory(payload.trim(), { ...cached.ruleResult, riskLevel: cached.finalDecision.finalVerdict });
+      return;
+    }
+
     if (placeholderMsgText) placeholderMsgText.textContent = 'Analyzing QR input...';
 
     // Step 2: Run ML Model (await result)
@@ -471,11 +491,14 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log("ML Result:", mlResult);
     console.log("Rule Result:", ruleResult);
 
+    // Save to Cache
+    PREDICTION_CACHE.set(cleanPayload, { mlResult, ruleResult, finalDecision });
+
     // Step 5: Update UI only when ALL results are ready
-    updateUI({ payload: cleanPayload, mlResult, ruleResult, finalDecision });
+    updateUI({ payload: payload.trim(), mlResult, ruleResult, finalDecision });
 
     // Save scan to history
-    saveScanToHistory(cleanPayload, { ...ruleResult, riskLevel: finalDecision.finalVerdict });
+    saveScanToHistory(payload.trim(), { ...ruleResult, riskLevel: finalDecision.finalVerdict });
   }
 
   function evaluateRisk(content) {

@@ -19,7 +19,7 @@ Generates 10,000 balanced sample URLs (5,000 Safe, 5,000 Malicious) with 13 adva
 import csv
 import math
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 import random
 
 SAFE_DOMAINS_WHITELIST = [
@@ -77,6 +77,9 @@ def extract_advanced_13_features(url):
     13. is_whitelisted: 1 if domain in trusted whitelist, 0 otherwise
     """
     url_str = str(url).strip()
+    url_str = unquote(url_str)
+    if url_str.endswith('/'):
+        url_str = url_str[:-1]
     url_lower = url_str.lower()
     
     try:
