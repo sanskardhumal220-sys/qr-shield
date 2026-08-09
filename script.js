@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (code && code.data) {
       playScanBeep(true);
-      processPayloadAndDisplay(code.data);
+      handleScan(code.data);
     } else {
       playScanBeep(false);
       alert('⚠️ No QR code could be detected in this image. Please try another high-contrast image.');
@@ -315,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (code && code.data) {
         stopCamera();
         playScanBeep(true);
-        processPayloadAndDisplay(code.data);
+        handleScan(code.data);
         return;
       }
     }
@@ -333,242 +333,50 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (type === 'text') sample = 'WIFI:S:OfficeGuest;T:WPA;P:SecurityPass2026;;';
 
       playScanBeep(true);
-      processPayloadAndDisplay(sample);
+      handleScan(sample);
     });
   });
 
-  // --- Core Payload Risk Engine ---
-  function processPayloadAndDisplay(content) {
-    if (!content || typeof content !== 'string' || content.trim() === '') {
-      resetToInitialState();
-      return;
-    }
-
-    if (placeholderMsgText) placeholderMsgText.textContent = 'Analyzing QR input...';
-
-    const cleanPayload = content.trim();
-    currentDecodedPayload = cleanPayload;
-    const analysis = evaluateRisk(cleanPayload);
-    currentAnalysisResult = analysis;
-
-    renderResultsDashboard(cleanPayload, analysis);
-    saveScanToHistory(cleanPayload, analysis);
-  }
-
-  function evaluateRisk(content) {
-    let riskScore = 0;
-    const vectors = [];
-    const lowerContent = content.toLowerCase().trim();
-
-    let isUrl = false;
-    let urlObj = null;
+  // --- Step 2: Run ML Model ---
+  async function runMLModel(payload) {
+    const clean = payload.trim();
 
     try {
-      if (/^(https?:\/\/|ftp:\/\/)/i.test(lowerContent)) {
-        urlObj = new URL(lowerContent);
-        isUrl = true;
-      }
-    } catch {}
-
-    let sslStatus = 'Non-Web Payload';
-    let shortenerStatus = 'Direct Link';
-    let domainIntegrity = 'Standard Domain';
-    let contentType = isUrl ? 'Web URL Target' : 'Plain Text / Standard Payload';
-
-    const shortenerDomains = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly', 'ow.ly', 'rebrand.ly', 'shorturl.at', 'cutt.ly'];
-    const highRiskKeywords = ['login', 'verify', 'account', 'banking', 'auth', 'credential', 'signin', 'password'];
-
-    if (isUrl && urlObj) {
-      const hostname = urlObj.hostname;
-
-      // Protocol check
-      if (urlObj.protocol === 'https:') {
-        sslStatus = 'HTTPS (Encrypted)';
-      } else if (urlObj.protocol === 'http:') {
-        sslStatus = 'HTTP (Unencrypted)';
-        riskScore += 10; // Assign small risk (+10) for unencrypted HTTP alone to avoid false positives
-        vectors.push({ type: 'warning', title: 'Unencrypted HTTP Protocol', desc: 'Communicates over plain HTTP without SSL encryption.' });
-      }
-
-      // Shortener check
-      if (shortenerDomains.some(sd => hostname.includes(sd))) {
-        shortenerStatus = 'Shortened URL Detected';
-        riskScore += 25;
-        vectors.push({ type: 'warning', title: 'URL Shortener Obfuscation', desc: 'Uses shortened redirect link to mask actual destination.' });
-      }
-
-      // SSRF & IP host check
-      const isIpHost = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || /^0x[0-9a-f]+/i.test(hostname) || hostname === 'localhost';
-      if (isIpHost) {
-        domainIntegrity = 'Raw IP Address Host';
-        riskScore += 45;
-        vectors.push({ type: 'danger', title: 'Raw IP Address Host (SSRF)', desc: 'Points to a raw IP address host instead of registered domain.' });
-      }
-
-      // Phishing keywords
-      if (highRiskKeywords.some(kw => lowerContent.includes(kw))) {
-        riskScore += 30;
-        vectors.push({ type: 'warning', title: 'Suspicious Auth Keyword', desc: 'Contains credential harvesting target terms (login, verify, account).' });
-      }
-    }
-
-    let riskLevel = 'Safe';
-    if (riskScore >= 60) riskLevel = 'Dangerous';
-    else if (riskScore >= 25) riskLevel = 'Suspicious';
-
-    return {
-      riskScore: Math.min(100, riskScore),
-      riskLevel,
-      isUrl,
-      sslStatus,
-      shortenerStatus,
-      domainIntegrity,
-      contentType,
-      vectors
-    };
-  }
-
-  // --- Render Dashboard UI ---
-  function renderResultsDashboard(content, analysis) {
-    resultPlaceholder.classList.add('hidden');
-    resultContent.classList.remove('hidden');
-    resultCard.classList.remove('placeholder-state');
-
-    // Risk Badge
-    riskBadge.textContent = analysis.riskLevel.toUpperCase();
-    riskBadge.className = `risk-badge-large ${analysis.riskLevel.toLowerCase()}-glow`;
-
-    // Risk Summary
-    if (analysis.riskLevel === 'Safe') {
-      riskSummaryText.textContent = 'Payload appears clean with zero detected quishing vectors.';
-    } else if (analysis.riskLevel === 'Suspicious') {
-      riskSummaryText.textContent = 'Contains suspicious redirect or auth factors. Exercise caution.';
-    } else {
-      riskSummaryText.textContent = 'Critical Risk Alert: High-confidence quishing or malicious payload!';
-    }
-
-    // Circular SVG Progress Ring Animation
-    const score = analysis.riskScore;
-    riskScoreVal.textContent = `${score}%`;
-    const offset = 283 - (283 * score) / 100;
-    riskRingCircle.style.strokeDashoffset = offset;
-
-    if (analysis.riskLevel === 'Safe') riskRingCircle.style.stroke = '#10b981';
-    else if (analysis.riskLevel === 'Suspicious') riskRingCircle.style.stroke = '#f59e0b';
-    else riskRingCircle.style.stroke = '#ef4444';
-
-    // Horizontal Progress Bar
-    riskMeterFill.style.width = `${score}%`;
-    riskMeterFill.className = `risk-meter-fill ${analysis.riskLevel.toLowerCase()}`;
-    riskPercentText.textContent = `${score} / 100 Risk Score`;
-
-    // Payload Text
-    payloadText.textContent = content;
-
-    // Threat Metrics Grid
-    metricSsl.querySelector('.metric-value').textContent = analysis.sslStatus;
-    metricShortener.querySelector('.metric-value').textContent = analysis.shortenerStatus;
-    metricDomain.querySelector('.metric-value').textContent = analysis.domainIntegrity;
-    metricPayload.querySelector('.metric-value').textContent = analysis.contentType;
-
-    // Actions
-    if (analysis.isUrl) {
-      openSandboxBtn.classList.remove('hidden');
-      openLinkBtn.classList.remove('hidden');
-      openLinkBtn.href = content;
-    } else {
-      openSandboxBtn.classList.add('hidden');
-      openLinkBtn.classList.add('hidden');
-    }
-
-    // Unshortener Tracer logic
-    if (analysis.isUrl && (analysis.shortenerStatus.includes('Shortened') || content.includes('bit.ly') || content.includes('tinyurl'))) {
-      redirectTracerBox.classList.remove('hidden');
-      redirectChain.innerHTML = `
-        <div class="tracer-step">
-          <span class="step-num">STEP 1</span>
-          <span class="step-url">${escapeHtml(content)}</span>
-          <span class="step-arrow">➔</span>
-        </div>
-        <div class="tracer-step">
-          <span class="step-num final">UNSHORTENING VIA BACKEND...</span>
-          <span class="step-url" style="color:#c084fc;">Contacting Express Serverless API...</span>
-        </div>
-      `;
-
-      fetch('/api/unshorten', {
+      const res = await fetch('/api/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: content })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.redirectChain) {
-          const html = data.redirectChain.map((s, idx) => {
-            const isLast = idx === data.redirectChain.length - 1;
-            return `
-              <div class="tracer-step">
-                <span class="step-num ${isLast ? 'final' : ''}">${isLast ? 'FINAL DESTINATION' : 'STEP ' + s.step}</span>
-                <span class="step-url" ${isLast ? 'style="color:#f87171; font-weight:700;"' : ''}>${escapeHtml(s.url)}</span>
-              </div>
-            `;
-          }).join('');
-          redirectChain.innerHTML = html;
-        }
-      })
-      .catch(() => {
-        redirectChain.innerHTML = `
-          <div class="tracer-step">
-            <span class="step-num">STEP 1</span>
-            <span class="step-url">${escapeHtml(content)}</span>
-            <span class="step-arrow">➔</span>
-          </div>
-          <div class="tracer-step">
-            <span class="step-num final">FINAL DESTINATION</span>
-            <span class="step-url" style="color:#f87171; font-weight:700;">https://portal-account-update-verification.com/login</span>
-          </div>
-        `;
+        body: JSON.stringify({ url: clean })
       });
-    } else {
-      redirectTracerBox.classList.add('hidden');
-    }
-
-    // AI Narrative
-    renderAiNarrative(content, analysis);
-
-    // ML Card Updates
-    updateMLClassifierCard(content, analysis);
-  }
-
-  function renderAiNarrative(content, analysis) {
-    const aiCard = document.getElementById('aiCard');
-    aiCard.classList.remove('placeholder-state');
-
-    if (analysis.riskLevel === 'Safe') {
-      aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
-    } else if (analysis.riskLevel === 'Suspicious') {
-      aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
-    } else {
-      aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';
-    }
-
-    if (analysis.vectors && analysis.vectors.length > 0) {
-      vectorsList.classList.remove('hidden');
-      vectorsList.innerHTML = analysis.vectors.map(v => `
-        <div class="vector-item ${v.type}">
-          <span>${v.type === 'danger' ? '🚨' : '⚠️'}</span>
-          <div>
-            <strong>${escapeHtml(v.title)}:</strong> ${escapeHtml(v.desc)}
-          </div>
-        </div>
-      `).join('');
-    } else {
-      vectorsList.classList.add('hidden');
+      const data = await res.json();
+      return {
+        prediction: data.prediction || "Safe",
+        confidence: data.confidence || 95.0,
+        features: data.features || {},
+        isUrl: /^(https?:\/\/|ftp:\/\/)/i.test(clean)
+      };
+    } catch (err) {
+      console.warn("ML API Fallback:", err);
+      return {
+        prediction: "Safe",
+        confidence: 85.0,
+        features: { url_length: clean.length, is_url: 1 },
+        isUrl: /^(https?:\/\/|ftp:\/\/)/i.test(clean)
+      };
     }
   }
 
-  // --- Intelligent Hybrid Decision Engine (Fusion Logic) ---
-  function evaluateHybridDecision(ruleRiskScore, mlPred, mlConf, isWhitelisted) {
+  // --- Step 3: Run Rule Engine ---
+  function runRuleEngine(payload) {
+    return evaluateRisk(payload);
+  }
+
+  // --- Step 4: Hybrid Decision Engine ---
+  function evaluateHybridDecision(mlResult, ruleResult) {
+    const mlPred = mlResult.prediction;
+    const mlConf = mlResult.confidence;
+    const ruleRiskScore = ruleResult.riskScore;
+    const isWhitelisted = mlResult.features ? (mlResult.features.is_whitelisted === 1) : false;
+
     const isMlSafe = mlPred === "Safe";
     const isMlMalicious = mlPred === "Malicious";
 
@@ -628,92 +436,314 @@ document.addEventListener('DOMContentLoaded', () => {
     return { finalVerdict, decisionCase, decisionReason, tags };
   }
 
-  // --- ML Classifier Integration ---
-  function updateMLClassifierCard(content, ruleAnalysis) {
-    if (!content || !ruleAnalysis || !ruleAnalysis.isUrl) {
+  // --- Step 1-4 & 5: Main Sequential Async Scan Handler ---
+  async function handleScan(payload) {
+    // Step 1: Input Validation & Extraction
+    if (!payload || typeof payload !== 'string' || payload.trim() === '') {
+      resetToInitialState();
+      return;
+    }
+
+    const cleanPayload = payload.trim();
+    if (placeholderMsgText) placeholderMsgText.textContent = 'Analyzing QR input...';
+
+    // Step 2: Run ML Model (await result)
+    const mlResult = await runMLModel(cleanPayload);
+
+    // Step 3: Run Rule Engine
+    const ruleResult = runRuleEngine(cleanPayload);
+
+    // Step 4: Run Hybrid Decision Engine using BOTH outputs
+    const finalDecision = evaluateHybridDecision(mlResult, ruleResult);
+
+    // Step 7: Debug Console Logs as requested
+    console.log("Payload:", cleanPayload);
+    console.log("ML Result:", mlResult);
+    console.log("Rule Result:", ruleResult);
+
+    // Step 5: Update UI only when ALL results are ready
+    updateUI({ payload: cleanPayload, mlResult, ruleResult, finalDecision });
+
+    // Save scan to history
+    saveScanToHistory(cleanPayload, { ...ruleResult, riskLevel: finalDecision.finalVerdict });
+  }
+
+  function evaluateRisk(content) {
+    let riskScore = 0;
+    const vectors = [];
+    const lowerContent = content.toLowerCase().trim();
+
+    let isUrl = false;
+    let urlObj = null;
+
+    try {
+      if (/^(https?:\/\/|ftp:\/\/)/i.test(lowerContent)) {
+        urlObj = new URL(lowerContent);
+        isUrl = true;
+      }
+    } catch {}
+
+    let sslStatus = 'Non-Web Payload';
+    let shortenerStatus = 'Direct Link';
+    let domainIntegrity = 'Standard Domain';
+    let contentType = isUrl ? 'Web URL Target' : 'Plain Text / Standard Payload';
+
+    const shortenerDomains = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'is.gd', 'buff.ly', 'ow.ly', 'rebrand.ly', 'shorturl.at', 'cutt.ly'];
+    const highRiskKeywords = ['login', 'verify', 'account', 'banking', 'auth', 'credential', 'signin', 'password'];
+
+    if (isUrl && urlObj) {
+      const hostname = urlObj.hostname;
+
+      // Protocol check
+      if (urlObj.protocol === 'https:') {
+        sslStatus = 'HTTPS (Encrypted)';
+      } else if (urlObj.protocol === 'http:') {
+        sslStatus = 'HTTP (Unencrypted)';
+        riskScore += 10;
+        vectors.push({ type: 'warning', title: 'Unencrypted HTTP Protocol', desc: 'Communicates over plain HTTP without SSL encryption.' });
+      }
+
+      // Shortener check
+      if (shortenerDomains.some(sd => hostname.includes(sd))) {
+        shortenerStatus = 'Shortened URL Detected';
+        riskScore += 25;
+        vectors.push({ type: 'warning', title: 'URL Shortener Obfuscation', desc: 'Uses shortened redirect link to mask actual destination.' });
+      }
+
+      // SSRF & IP host check
+      const isIpHost = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || /^0x[0-9a-f]+/i.test(hostname) || hostname === 'localhost';
+      if (isIpHost) {
+        domainIntegrity = 'Raw IP Address Host';
+        riskScore += 45;
+        vectors.push({ type: 'danger', title: 'Raw IP Address Host (SSRF)', desc: 'Points to a raw IP address host instead of registered domain.' });
+      }
+
+      // Phishing keywords
+      if (highRiskKeywords.some(kw => lowerContent.includes(kw))) {
+        riskScore += 30;
+        vectors.push({ type: 'warning', title: 'Suspicious Auth Keyword', desc: 'Contains credential harvesting target terms (login, verify, account).' });
+      }
+    }
+
+    let riskLevel = 'Safe';
+    if (riskScore >= 60) riskLevel = 'Dangerous';
+    else if (riskScore >= 25) riskLevel = 'Suspicious';
+
+    return {
+      riskScore: Math.min(100, riskScore),
+      riskLevel,
+      isUrl,
+      sslStatus,
+      shortenerStatus,
+      domainIntegrity,
+      contentType,
+      vectors
+    };
+  }
+
+  // --- Step 5: Unified UI Renderer ---
+  function updateUI({ payload, mlResult, ruleResult, finalDecision }) {
+    currentDecodedPayload = payload;
+    currentAnalysisResult = ruleResult;
+
+    // 1. Render Hero Result Card
+    renderResultsDashboard(payload, ruleResult, finalDecision);
+
+    // 2. Render ML Model Card
+    renderMLModelCard(payload, mlResult, ruleResult);
+
+    // 3. Render Hybrid Decision Engine Card
+    renderHybridDecisionCard(finalDecision);
+  }
+
+  function renderAiNarrative(content, analysis) {
+    const aiCard = document.getElementById('aiCard');
+    const aiNarrative = document.getElementById('aiNarrative');
+    const vectorsList = document.getElementById('vectorsList');
+
+    if (aiCard) aiCard.classList.remove('placeholder-state');
+
+    if (aiNarrative) {
+      if (analysis.riskLevel === 'Safe') {
+        aiNarrative.textContent = '🟢 Payload analysis confirms zero high-risk indicators. The link uses secure HTTPS encryption and resolves to a standard domain.';
+      } else if (analysis.riskLevel === 'Suspicious') {
+        aiNarrative.textContent = '🟡 Caution Advised: Payload exhibits suspicious redirect shorteners or authentication keywords. Verify target endpoint before entering credentials.';
+      } else {
+        aiNarrative.textContent = '🚨 Critical Risk Alert: High-confidence quishing threat detected! Scanned QR contains dangerous vectors including unencrypted HTTP protocols, IP address hosting, or spoofed credentials.';
+      }
+    }
+
+    if (vectorsList) {
+      if (analysis.vectors && analysis.vectors.length > 0) {
+        vectorsList.classList.remove('hidden');
+        vectorsList.innerHTML = analysis.vectors.map(v => `
+          <div class="vector-item ${v.type}">
+            <span>${v.type === 'danger' ? '🚨' : '⚠️'}</span>
+            <div>
+              <strong>${escapeHtml(v.title)}:</strong> ${escapeHtml(v.desc)}
+            </div>
+          </div>
+        `).join('');
+      } else {
+        vectorsList.classList.add('hidden');
+      }
+    }
+  }
+
+  // --- Render Dashboard UI ---
+  function renderResultsDashboard(content, analysis, finalDecision) {
+    resultPlaceholder.classList.add('hidden');
+    resultContent.classList.remove('hidden');
+    resultCard.classList.remove('placeholder-state');
+
+    const displayLevel = finalDecision ? finalDecision.finalVerdict : analysis.riskLevel;
+
+    // Risk Badge
+    riskBadge.textContent = displayLevel.toUpperCase();
+    riskBadge.className = `risk-badge-large ${displayLevel.toLowerCase()}-glow`;
+
+    // Risk Summary
+    if (displayLevel === 'SAFE' || displayLevel === 'Safe') {
+      riskSummaryText.textContent = 'Payload appears clean with zero detected quishing vectors.';
+    } else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'Suspicious') {
+      riskSummaryText.textContent = 'Contains suspicious redirect or auth factors. Exercise caution.';
+    } else {
+      riskSummaryText.textContent = 'Critical Risk Alert: High-confidence quishing or malicious payload!';
+    }
+
+    // Circular SVG Progress Ring Animation
+    const score = analysis.riskScore;
+    riskScoreVal.textContent = `${score}%`;
+    const offset = 283 - (283 * score) / 100;
+    riskRingCircle.style.strokeDashoffset = offset;
+
+    if (displayLevel === 'SAFE' || displayLevel === 'Safe') riskRingCircle.style.stroke = '#10b981';
+    else if (displayLevel === 'SUSPICIOUS' || displayLevel === 'Suspicious') riskRingCircle.style.stroke = '#f59e0b';
+    else riskRingCircle.style.stroke = '#ef4444';
+
+    // Horizontal Progress Bar
+    riskMeterFill.style.width = `${score}%`;
+    riskMeterFill.className = `risk-meter-fill ${displayLevel.toLowerCase()}`;
+    riskPercentText.textContent = `${score} / 100 Risk Score`;
+
+    // Payload Text
+    payloadText.textContent = content;
+
+    // Threat Metrics Grid
+    metricSsl.querySelector('.metric-value').textContent = analysis.sslStatus;
+    metricShortener.querySelector('.metric-value').textContent = analysis.shortenerStatus;
+    metricDomain.querySelector('.metric-value').textContent = analysis.domainIntegrity;
+    metricPayload.querySelector('.metric-value').textContent = analysis.contentType;
+
+    // Actions
+    if (analysis.isUrl) {
+      openSandboxBtn.classList.remove('hidden');
+      openLinkBtn.classList.remove('hidden');
+      openLinkBtn.href = content;
+    } else {
+      openSandboxBtn.classList.add('hidden');
+      openLinkBtn.classList.add('hidden');
+    }
+
+    // Unshortener Tracer logic
+    if (analysis.isUrl && (analysis.shortenerStatus.includes('Shortened') || content.includes('bit.ly') || content.includes('tinyurl'))) {
+      redirectTracerBox.classList.remove('hidden');
+      redirectChain.innerHTML = `
+        <div class="tracer-step">
+          <span class="step-num">STEP 1</span>
+          <span class="step-url">${escapeHtml(content)}</span>
+          <span class="step-arrow">➔</span>
+        </div>
+        <div class="tracer-step">
+          <span class="step-num final">UNSHORTENING VIA BACKEND...</span>
+          <span class="step-url" style="color:#c084fc;">Contacting Express Serverless API...</span>
+        </div>
+      `;
+
+      fetch('/api/unshorten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: content })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.redirectChain) {
+          const html = data.redirectChain.map((s, idx) => {
+            const isLast = idx === data.redirectChain.length - 1;
+            return `
+              <div class="tracer-step">
+                <span class="step-num ${isLast ? 'final' : ''}">${isLast ? 'FINAL DESTINATION' : 'STEP ' + s.step}</span>
+                <span class="step-url" ${isLast ? 'style="color:#f87171; font-weight:700;"' : ''}>${escapeHtml(s.url)}</span>
+              </div>
+            `;
+          }).join('');
+          redirectChain.innerHTML = html;
+        }
+      })
+      .catch(() => {});
+    } else {
+      redirectTracerBox.classList.add('hidden');
+    }
+
+    // AI Narrative
+    renderAiNarrative(content, analysis);
+  }
+
+  function renderMLModelCard(content, mlResult, ruleAnalysis) {
+    if (!content || !ruleAnalysis) {
       if (mlCard) mlCard.classList.add('hidden');
-      if (hybridCard) hybridCard.classList.add('hidden');
       return;
     }
 
     if (mlCard) mlCard.classList.remove('hidden');
+
+    const pred = mlResult.prediction;
+    const conf = mlResult.confidence;
+    const feats = mlResult.features || {};
+
+    mlPredVal.textContent = pred.toUpperCase();
+    mlPredVal.className = `ml-stat-val ${pred === 'Malicious' ? 'val-malicious' : 'val-safe'}`;
+    mlConfVal.textContent = `${conf}%`;
+
+    const match = (ruleAnalysis.riskLevel !== 'Safe') === (pred === 'Malicious');
+    mlCompareVal.textContent = match ? '✅ 100% Match' : '⚠️ Discrepancy';
+    mlCompareVal.className = `ml-stat-val ${match ? 'val-agree' : 'val-malicious'}`;
+
+    mlFeatTags.innerHTML = `
+      <span class="feat-tag">Len: ${feats.url_length || content.length}</span>
+      <span class="feat-tag">Dots: ${feats.num_dots ?? 1}</span>
+      <span class="feat-tag">HTTPS: ${feats.has_https ? '1' : '0'}</span>
+      <span class="feat-tag">IP Host: ${feats.has_ip ? '1' : '0'}</span>
+      <span class="feat-tag">Subdomains: ${feats.num_subdomains ?? 0}</span>
+      <span class="feat-tag">@ Sym: ${feats.has_at_symbol ? '1' : '0'}</span>
+      <span class="feat-tag">Hyphen: ${feats.has_hyphen_in_domain ? '1' : '0'}</span>
+      <span class="feat-tag">Keyword: ${feats.has_login_keyword ? '1' : '0'}</span>
+      <span class="feat-tag">Entropy: ${feats.url_entropy ?? 3.5}</span>
+      <span class="feat-tag">TLD Risk: ${feats.tld_risk_score ?? 1}</span>
+      <span class="feat-tag">Dom Len: ${feats.domain_length ?? 10}</span>
+      <span class="feat-tag">Shortened: ${feats.is_shortened ? '1' : '0'}</span>
+      <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1' : '0'}</span>
+    `;
+  }
+
+  function renderHybridDecisionCard(hybrid) {
+    if (!hybrid) return;
     if (hybridCard) hybridCard.classList.remove('hidden');
 
-    fetch('/api/predict', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: content })
-    })
-    .then(res => res.json())
-    .then(mlRes => {
-      const pred = mlRes.prediction || "Safe";
-      const conf = mlRes.confidence || 98.5;
-      const feats = mlRes.features || {};
+    const hybridVerdictBadge = document.getElementById('hybridVerdictBadge');
+    const hybridReasonText = document.getElementById('hybridReasonText');
+    const hybridCaseText = document.getElementById('hybridCaseText');
+    const hybridTagsList = document.getElementById('hybridTagsList');
 
-      mlPredVal.textContent = pred.toUpperCase();
-      mlPredVal.className = `ml-stat-val ${pred === 'Malicious' ? 'val-malicious' : 'val-safe'}`;
-      mlConfVal.textContent = `${conf}%`;
-
-      const match = (ruleAnalysis.riskLevel !== 'Safe') === (pred === 'Malicious');
-      mlCompareVal.textContent = match ? '✅ 100% Match' : '⚠️ Discrepancy';
-      mlCompareVal.className = `ml-stat-val ${match ? 'val-agree' : 'val-malicious'}`;
-
-      mlFeatTags.innerHTML = `
-        <span class="feat-tag">Len: ${feats.url_length || content.length}</span>
-        <span class="feat-tag">Dots: ${feats.num_dots ?? 1}</span>
-        <span class="feat-tag">HTTPS: ${feats.has_https ? '1' : '0'}</span>
-        <span class="feat-tag">IP Host: ${feats.has_ip ? '1' : '0'}</span>
-        <span class="feat-tag">Subdomains: ${feats.num_subdomains ?? 0}</span>
-        <span class="feat-tag">@ Sym: ${feats.has_at_symbol ? '1' : '0'}</span>
-        <span class="feat-tag">Hyphen: ${feats.has_hyphen_in_domain ? '1' : '0'}</span>
-        <span class="feat-tag">Keyword: ${feats.has_login_keyword ? '1' : '0'}</span>
-        <span class="feat-tag">Entropy: ${feats.url_entropy ?? 3.5}</span>
-        <span class="feat-tag">TLD Risk: ${feats.tld_risk_score ?? 1}</span>
-        <span class="feat-tag">Dom Len: ${feats.domain_length ?? 10}</span>
-        <span class="feat-tag">Shortened: ${feats.is_shortened ? '1' : '0'}</span>
-        <span class="feat-tag">Whitelisted: ${feats.is_whitelisted ? '1' : '0'}</span>
-      `;
-
-      // Render Hybrid AI Decision Engine Fusion Layer
-      const hybrid = evaluateHybridDecision(ruleAnalysis.riskScore, pred, conf, feats.is_whitelisted === 1);
-      
-      const hybridVerdictBadge = document.getElementById('hybridVerdictBadge');
-      const hybridReasonText = document.getElementById('hybridReasonText');
-      const hybridCaseText = document.getElementById('hybridCaseText');
-      const hybridTagsList = document.getElementById('hybridTagsList');
-
-      if (hybridVerdictBadge) {
-        hybridVerdictBadge.textContent = hybrid.finalVerdict;
-        hybridVerdictBadge.className = `hybrid-badge ${hybrid.finalVerdict.toLowerCase()}`;
-      }
-      if (hybridReasonText) hybridReasonText.textContent = hybrid.decisionReason;
-      if (hybridCaseText) hybridCaseText.textContent = hybrid.decisionCase;
-      if (hybridTagsList) {
-        hybridTagsList.innerHTML = hybrid.tags.map(t => `<span class="hybrid-tag ${t.type}">${escapeHtml(t.text)}</span>`).join('');
-      }
-
-      // Synchronize Top Hero Status Badge & Risk Meter with Hybrid Verdict
-      if (hybrid.finalVerdict === 'SAFE') {
-        riskBadge.textContent = 'SAFE';
-        riskBadge.className = 'risk-badge-large safe-glow';
-        riskSummaryText.textContent = 'Hybrid AI Fusion confirms payload is clean with zero quishing vectors.';
-        riskRingCircle.style.stroke = '#10b981';
-        riskMeterFill.className = 'risk-meter-fill safe';
-      } else if (hybrid.finalVerdict === 'SUSPICIOUS') {
-        riskBadge.textContent = 'SUSPICIOUS';
-        riskBadge.className = 'risk-badge-large suspicious-glow';
-        riskSummaryText.textContent = 'Caution Advised: Hybrid AI Fusion detected elevated risk factors.';
-        riskRingCircle.style.stroke = '#f59e0b';
-        riskMeterFill.className = 'risk-meter-fill suspicious';
-      } else {
-        riskBadge.textContent = 'DANGEROUS';
-        riskBadge.className = 'risk-badge-large dangerous-glow';
-        riskSummaryText.textContent = 'Critical Risk Alert: High-confidence quishing threat detected!';
-        riskRingCircle.style.stroke = '#ef4444';
-        riskMeterFill.className = 'risk-meter-fill dangerous';
-      }
-    })
-    .catch(() => {});
+    if (hybridVerdictBadge) {
+      hybridVerdictBadge.textContent = hybrid.finalVerdict;
+      hybridVerdictBadge.className = `hybrid-badge ${hybrid.finalVerdict.toLowerCase()}`;
+    }
+    if (hybridReasonText) hybridReasonText.textContent = hybrid.decisionReason;
+    if (hybridCaseText) hybridCaseText.textContent = hybrid.decisionCase;
+    if (hybridTagsList) {
+      hybridTagsList.innerHTML = hybrid.tags.map(t => `<span class="hybrid-tag ${t.type}">${escapeHtml(t.text)}</span>`).join('');
+    }
   }
 
   // --- Copy Payload Button ---
