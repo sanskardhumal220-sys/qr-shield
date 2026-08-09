@@ -241,7 +241,7 @@
           <div class="radar-scan-animation">
             <div class="radar-sweep"></div>
           </div>
-          <p>Scan or upload a QR code image to analyze threat vectors</p>
+          <p id="placeholderMsgText">Scan a QR code to start analysis</p>
         </div>
 
         <!-- Result Content Container -->
@@ -348,8 +348,8 @@
         </div>
       </section>
 
-      <!-- Machine Learning URL Classifier Card -->
-      <section class="card ml-card" id="mlCard">
+      <!-- Machine Learning URL Classifier Card (Hidden until valid QR scan) -->
+      <section class="card ml-card hidden" id="mlCard">
         <div class="card-header">
           <div class="ml-header-group">
             <h2 class="card-title">
@@ -368,44 +368,35 @@
               <span class="ml-toggle-label" id="mlToggleStatusLabel">AI Mode ON</span>
             </div>
           </div>
-          <span class="card-subtitle">Scikit-Learn Random Forest Classifier (2,000+ Trained Samples)</span>
+          <span class="card-subtitle">Scikit-Learn Random Forest Classifier (10,000 Trained Samples)</span>
         </div>
 
         <div class="ml-body" id="mlBody">
           <div class="ml-metrics-row">
             <div class="ml-stat-chip">
               <span class="ml-stat-label">ML Prediction</span>
-              <span class="ml-stat-val val-safe" id="mlPredVal">SAFE</span>
+              <span class="ml-stat-val val-safe" id="mlPredVal">--</span>
             </div>
             <div class="ml-stat-chip">
               <span class="ml-stat-label">Model Confidence</span>
-              <span class="ml-stat-val" id="mlConfVal">100%</span>
+              <span class="ml-stat-val" id="mlConfVal">--</span>
             </div>
             <div class="ml-stat-chip">
               <span class="ml-stat-label">Engine Agreement</span>
-              <span class="ml-stat-val val-agree" id="mlCompareVal">✅ 100% Match</span>
+              <span class="ml-stat-val val-agree" id="mlCompareVal">--</span>
             </div>
           </div>
 
           <!-- Extracted Feature Vector Chips -->
           <div class="ml-features-group">
             <span class="ml-feat-title">EXTRACTED ML FEATURE VECTOR:</span>
-            <div class="ml-feat-tags" id="mlFeatTags">
-              <span class="feat-tag">Length: 37</span>
-              <span class="feat-tag">HTTPS: 1</span>
-              <span class="feat-tag">Dots: 1</span>
-              <span class="feat-tag">IP Host: 0</span>
-              <span class="feat-tag">Login Keyword: 0</span>
-              <span class="feat-tag">Shortened: 0</span>
-              <span class="feat-tag">Whitelisted: 1</span>
-              <span class="feat-tag">TLD Risk: 1</span>
-            </div>
+            <div class="ml-feat-tags" id="mlFeatTags"></div>
           </div>
         </div>
       </section>
 
-      <!-- Hybrid AI Decision Engine (Fusion Logic Card) -->
-      <section class="card hybrid-card" id="hybridCard">
+      <!-- Hybrid AI Decision Engine (Fusion Logic Card - Hidden until valid QR scan) -->
+      <section class="card hybrid-card hidden" id="hybridCard">
         <div class="card-header">
           <div class="hybrid-header-group">
             <h2 class="card-title">

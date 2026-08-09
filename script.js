@@ -190,15 +190,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Reset Scanner Button
-  resetScanBtn.addEventListener('click', () => {
-    fileInput.value = '';
-    previewContainer.classList.add('hidden');
-    dropZoneContent.classList.remove('hidden');
-    resultContent.classList.add('hidden');
-    resultPlaceholder.classList.remove('hidden');
-    resultCard.classList.add('placeholder-state');
-  });
+  const hybridCard = document.getElementById('hybridCard');
+  const placeholderMsgText = document.getElementById('placeholderMsgText');
+
+  // --- Reset to Initial Empty State ---
+  function resetToInitialState() {
+    currentDecodedPayload = null;
+    currentAnalysisResult = null;
+    if (fileInput) fileInput.value = '';
+
+    if (previewContainer) previewContainer.classList.add('hidden');
+    if (dropZoneContent) dropZoneContent.classList.remove('hidden');
+    if (resultContent) resultContent.classList.add('hidden');
+    if (resultPlaceholder) resultPlaceholder.classList.remove('hidden');
+    if (placeholderMsgText) placeholderMsgText.textContent = 'Scan a QR code to start analysis';
+    if (resultCard) resultCard.classList.add('placeholder-state');
+    if (aiCard) aiCard.classList.add('placeholder-state');
+
+    // Hide ML and Hybrid cards until a valid QR is decoded
+    if (mlCard) mlCard.classList.add('hidden');
+    if (hybridCard) hybridCard.classList.add('hidden');
+  }
+
+  // Ensure initial empty state on page load
+  resetToInitialState();
+
+  // Reset Scanner Button Click Handler
+  resetScanBtn.addEventListener('click', resetToInitialState);
 
   // --- Image Processing & QR Decoding ---
   function handleImageFile(file) {
@@ -321,12 +339,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Core Payload Risk Engine ---
   function processPayloadAndDisplay(content) {
-    currentDecodedPayload = content;
-    const analysis = evaluateRisk(content);
+    if (!content || typeof content !== 'string' || content.trim() === '') {
+      resetToInitialState();
+      return;
+    }
+
+    if (placeholderMsgText) placeholderMsgText.textContent = 'Analyzing QR input...';
+
+    const cleanPayload = content.trim();
+    currentDecodedPayload = cleanPayload;
+    const analysis = evaluateRisk(cleanPayload);
     currentAnalysisResult = analysis;
 
-    renderResultsDashboard(content, analysis);
-    saveScanToHistory(content, analysis);
+    renderResultsDashboard(cleanPayload, analysis);
+    saveScanToHistory(cleanPayload, analysis);
   }
 
   function evaluateRisk(content) {
@@ -604,12 +630,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- ML Classifier Integration ---
   function updateMLClassifierCard(content, ruleAnalysis) {
-    if (!mlCard || !ruleAnalysis.isUrl) {
+    if (!content || !ruleAnalysis || !ruleAnalysis.isUrl) {
       if (mlCard) mlCard.classList.add('hidden');
+      if (hybridCard) hybridCard.classList.add('hidden');
       return;
     }
 
-    mlCard.classList.remove('hidden');
+    if (mlCard) mlCard.classList.remove('hidden');
+    if (hybridCard) hybridCard.classList.remove('hidden');
 
     fetch('/api/predict', {
       method: 'POST',
