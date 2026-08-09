@@ -154,6 +154,13 @@ app.post('/api/check-domain', async (req, res) => {
       hasMailServer: mxRecords.length > 0,
       mxCount: mxRecords.length
     });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'DNS inspection failed: ' + error.message
+    });
+  }
+});
 
 /**
  * POST /api/predict & POST /api/predict-ml
