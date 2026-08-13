@@ -1,0 +1,5 @@
+:HL["/_next/static/chunks/3sot6wlfr08ck.css","style"]
+:HL["/_next/static/media/1b99372b3eaef0c8-s.p.1gsd1jahc5dg_.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/app/shield_icon.png","image"]
+:HL["/app/favicon.png","image"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}},"staleTime":300,"buildId":"KCmL33fsmdjHYtnfQqqxp"}

@@ -1,0 +1,21 @@
+{
+  "name": "QR Shield",
+  "short_name": "QR Shield",
+  "description": "AI-Powered Quishing Threat Detector and QR Code Security Intelligence Platform",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
